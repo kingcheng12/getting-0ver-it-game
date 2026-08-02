@@ -13,6 +13,7 @@ from .networks import (
     SACNetworks,
     create_sac_networks,
 )
+from .sac_update import SACUpdateMetrics, SACUpdater
 
 __all__ = [
     "EnvironmentConfig",
@@ -24,6 +25,8 @@ __all__ = [
     "ReplayBuffer",
     "SACConfig",
     "SACNetworks",
+    "SACUpdateMetrics",
+    "SACUpdater",
     "TrainingConfig",
     "create_algorithm",
     "create_sac_networks",

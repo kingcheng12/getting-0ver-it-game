@@ -54,6 +54,7 @@ class SACConfig:
     critic_learning_rate: float = 3e-4
     entropy_learning_rate: float = 3e-4
     automatic_entropy_tuning: bool = True
+    initial_entropy_coefficient: float = 0.2
     target_entropy: Optional[float] = None
     log_std_min: float = -20.0
     log_std_max: float = 2.0
@@ -98,6 +99,13 @@ class SACConfig:
             self.target_entropy
         ):
             raise ValueError("target_entropy must be finite")
+        if (
+            not math.isfinite(self.initial_entropy_coefficient)
+            or self.initial_entropy_coefficient <= 0.0
+        ):
+            raise ValueError(
+                "initial_entropy_coefficient must be positive"
+            )
         if self.checkpoint_interval <= 0:
             raise ValueError("checkpoint_interval must be positive")
         try:

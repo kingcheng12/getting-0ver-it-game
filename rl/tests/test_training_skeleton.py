@@ -37,6 +37,7 @@ def test_sac_foundation_defaults_to_cpu():
     assert config.hidden_sizes == (256, 256)
     assert config.replay_capacity == 200_000
     assert config.batch_size == 256
+    assert config.initial_entropy_coefficient == 0.2
     assert config.device == "cpu"
     assert config.resolve_device().type == "cpu"
 
@@ -87,6 +88,10 @@ def test_cli_overrides_create_typed_configs(tmp_path: Path):
         ({"actor_learning_rate": 0.0}, "actor_learning_rate"),
         ({"log_std_min": 2.0, "log_std_max": 2.0}, "log_std"),
         ({"target_entropy": float("inf")}, "target_entropy"),
+        (
+            {"initial_entropy_coefficient": 0.0},
+            "initial_entropy_coefficient",
+        ),
         ({"checkpoint_interval": 0}, "checkpoint_interval"),
         ({"device": "not-a-device"}, "device"),
     ],

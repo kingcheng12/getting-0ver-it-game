@@ -15,13 +15,20 @@ dependencies = [
     "protobuf==3.20.3",
 ]
 
+[project.scripts]
+goi-train = "getting_over_it_rl.train:main"
+goi-evaluate = "getting_over_it_rl.evaluate:main"
+
 [dependency-groups]
 dev = [
     "pytest==8.3.5",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/getting_over_it_env"]
+packages = [
+    "src/getting_over_it_env",
+    "src/getting_over_it_rl",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -10,6 +10,15 @@
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
 
+# Local reinforcement-learning environments and generated artifacts
+/rl/.venv/
+/rl/.uv-cache/
+/rl/.uv-python/
+/rl/.pytest_cache/
+/[.]pytest_cache/
+/rl/**/__pycache__/
+/rl/checkpoints/
+
 # MemoryCaptures can get excessive in size.
 # They also could contain extremely sensitive data
 /[Mm]emoryCaptures/

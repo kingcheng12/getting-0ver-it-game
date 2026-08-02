@@ -10,7 +10,7 @@ from getting_over_it_env import ENVIRONMENT_ID
 from .algorithm import RLAlgorithm, create_algorithm
 from .config import EnvironmentConfig, EvaluationConfig
 
-AlgorithmLoader = Callable[[Path], RLAlgorithm]
+AlgorithmLoader = Callable[..., RLAlgorithm]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -57,8 +57,9 @@ def run_evaluation(
     config: EvaluationConfig,
     algorithm_loader: AlgorithmLoader = create_algorithm,
 ) -> None:
-    # This deliberately fails before opening Unity until a loader exists.
-    algorithm = algorithm_loader(config.checkpoint_path)
+    algorithm = algorithm_loader(
+        config.checkpoint_path, device=config.device
+    )
 
     environment: Optional[gym.Env] = None
     try:

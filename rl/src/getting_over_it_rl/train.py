@@ -10,7 +10,7 @@ from getting_over_it_env import ENVIRONMENT_ID
 from .algorithm import RLAlgorithm, create_algorithm
 from .config import EnvironmentConfig, SACConfig, TrainingConfig
 
-AlgorithmFactory = Callable[[], RLAlgorithm]
+AlgorithmFactory = Callable[..., RLAlgorithm]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -57,8 +57,8 @@ def run_training(
     config: TrainingConfig,
     algorithm_factory: AlgorithmFactory = create_algorithm,
 ) -> None:
-    # This deliberately fails before opening Unity until a factory exists.
-    algorithm = algorithm_factory()
+    algorithm = algorithm_factory(config=config.sac, seed=config.seed)
+    algorithm.ensure_training_ready()
 
     environment: Optional[gym.Env] = None
     try:

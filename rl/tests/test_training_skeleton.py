@@ -6,6 +6,7 @@ from getting_over_it_rl import (
     EnvironmentConfig,
     EvaluationConfig,
     SACConfig,
+    SACAlgorithm,
     TrainingConfig,
     create_algorithm,
 )
@@ -101,9 +102,14 @@ def test_sac_configuration_rejects_invalid_values(overrides, message):
         SACConfig(**overrides)
 
 
-def test_algorithm_factory_explains_next_step():
-    with pytest.raises(NotImplementedError, match="PPO or SAC"):
-        create_algorithm()
+def test_algorithm_factory_constructs_sac():
+    algorithm = create_algorithm(
+        config=SACConfig(
+            hidden_sizes=(8,), replay_capacity=10, batch_size=4
+        )
+    )
+
+    assert isinstance(algorithm, SACAlgorithm)
 
 
 def test_training_fails_before_unity_is_opened(monkeypatch):
@@ -112,8 +118,13 @@ def test_training_fails_before_unity_is_opened(monkeypatch):
         "make",
         lambda *args, **kwargs: pytest.fail("Unity was opened"),
     )
-    with pytest.raises(NotImplementedError, match="create_algorithm"):
-        train.main([])
+    config = TrainingConfig(
+        sac=SACConfig(
+            hidden_sizes=(8,), replay_capacity=10, batch_size=4
+        )
+    )
+    with pytest.raises(NotImplementedError, match="training loop"):
+        train.run_training(config)
 
 
 def test_evaluation_fails_before_unity_is_opened(monkeypatch):
@@ -122,5 +133,10 @@ def test_evaluation_fails_before_unity_is_opened(monkeypatch):
         "make",
         lambda *args, **kwargs: pytest.fail("Unity was opened"),
     )
-    with pytest.raises(NotImplementedError, match="create_algorithm"):
-        evaluate.main([])
+    def missing_checkpoint(*args, **kwargs):
+        raise FileNotFoundError("missing checkpoint")
+
+    with pytest.raises(FileNotFoundError, match="missing checkpoint"):
+        evaluate.run_evaluation(
+            EvaluationConfig(), algorithm_loader=missing_checkpoint
+        )

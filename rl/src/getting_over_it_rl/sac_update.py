@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 from torch import nn
@@ -27,6 +27,8 @@ class SACUpdateMetrics:
 
 class SACUpdater:
     """Perform isolated Soft Actor-Critic parameter updates."""
+
+    STATE_VERSION = 1
 
     def __init__(self, networks: SACNetworks, config: SACConfig) -> None:
         if not isinstance(networks, SACNetworks):
@@ -212,6 +214,117 @@ class SACUpdater:
             self.networks.critic_2, self.networks.target_critic_2
         )
 
+    def state_dict(self) -> Dict[str, Any]:
+        return {
+            "version": self.STATE_VERSION,
+            "automatic_entropy_tuning": (
+                self.config.automatic_entropy_tuning
+            ),
+            "target_entropy": self.target_entropy,
+            "actor_optimizer": self.actor_optimizer.state_dict(),
+            "critic_1_optimizer": self.critic_1_optimizer.state_dict(),
+            "critic_2_optimizer": self.critic_2_optimizer.state_dict(),
+            "log_alpha": (
+                None
+                if self.log_alpha is None
+                else self.log_alpha.detach().clone()
+            ),
+            "fixed_alpha": (
+                None
+                if self._fixed_alpha is None
+                else self._fixed_alpha.detach().clone()
+            ),
+            "entropy_optimizer": (
+                None
+                if self.entropy_optimizer is None
+                else self.entropy_optimizer.state_dict()
+            ),
+        }
+
+    def load_state_dict(self, state: Dict[str, Any]) -> None:
+        if not isinstance(state, dict):
+            raise TypeError("SAC updater state must be a dictionary")
+        expected_keys = {
+            "version",
+            "automatic_entropy_tuning",
+            "target_entropy",
+            "actor_optimizer",
+            "critic_1_optimizer",
+            "critic_2_optimizer",
+            "log_alpha",
+            "fixed_alpha",
+            "entropy_optimizer",
+        }
+        if set(state) != expected_keys:
+            missing = sorted(expected_keys - set(state))
+            extra = sorted(set(state) - expected_keys)
+            raise ValueError(
+                "Invalid SAC updater state keys; "
+                f"missing={missing}, extra={extra}"
+            )
+        if state["version"] != self.STATE_VERSION:
+            raise ValueError(
+                "Unsupported SAC updater state version: "
+                f"{state['version']}"
+            )
+        if (
+            state["automatic_entropy_tuning"]
+            is not self.config.automatic_entropy_tuning
+        ):
+            raise ValueError("Checkpoint entropy-tuning mode is incompatible")
+        if float(state["target_entropy"]) != self.target_entropy:
+            raise ValueError("Checkpoint target entropy is incompatible")
+
+        self.actor_optimizer.load_state_dict(state["actor_optimizer"])
+        self.critic_1_optimizer.load_state_dict(
+            state["critic_1_optimizer"]
+        )
+        self.critic_2_optimizer.load_state_dict(
+            state["critic_2_optimizer"]
+        )
+        self._move_optimizer_state(self.actor_optimizer)
+        self._move_optimizer_state(self.critic_1_optimizer)
+        self._move_optimizer_state(self.critic_2_optimizer)
+
+        if self.config.automatic_entropy_tuning:
+            if (
+                self.log_alpha is None
+                or self.entropy_optimizer is None
+                or not isinstance(state["log_alpha"], torch.Tensor)
+                or state["fixed_alpha"] is not None
+                or not isinstance(state["entropy_optimizer"], dict)
+            ):
+                raise ValueError("Automatic entropy checkpoint is invalid")
+            log_alpha = state["log_alpha"]
+            if log_alpha.numel() != 1 or not torch.isfinite(log_alpha).all():
+                raise ValueError("Checkpoint log_alpha must be finite scalar")
+            with torch.no_grad():
+                self.log_alpha.copy_(log_alpha.to(self.device))
+            self.entropy_optimizer.load_state_dict(
+                state["entropy_optimizer"]
+            )
+            self._move_optimizer_state(self.entropy_optimizer)
+        else:
+            fixed_alpha = state["fixed_alpha"]
+            if (
+                self._fixed_alpha is None
+                or state["log_alpha"] is not None
+                or state["entropy_optimizer"] is not None
+                or not isinstance(fixed_alpha, torch.Tensor)
+                or fixed_alpha.numel() != 1
+                or not torch.isfinite(fixed_alpha).all()
+            ):
+                raise ValueError("Fixed entropy checkpoint is invalid")
+            expected_alpha = self.config.initial_entropy_coefficient
+            if not math.isclose(
+                float(fixed_alpha.item()),
+                expected_alpha,
+                rel_tol=1e-6,
+                abs_tol=1e-8,
+            ):
+                raise ValueError("Checkpoint fixed alpha is incompatible")
+            self._fixed_alpha.copy_(fixed_alpha.to(self.device))
+
     def _soft_update(self, online: QCritic, target: QCritic) -> None:
         tau = self.config.tau
         for online_parameter, target_parameter in zip(
@@ -289,6 +402,12 @@ class SACUpdater:
         if len(devices) != 1:
             raise ValueError("all networks must be on one device")
         return parameters[0].device
+
+    def _move_optimizer_state(self, optimizer: Adam) -> None:
+        for optimizer_state in optimizer.state.values():
+            for key, value in optimizer_state.items():
+                if isinstance(value, torch.Tensor):
+                    optimizer_state[key] = value.to(self.device)
 
     @staticmethod
     def _ensure_finite(value: torch.Tensor, name: str) -> None:

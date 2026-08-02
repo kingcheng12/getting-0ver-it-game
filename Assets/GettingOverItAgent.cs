@@ -25,7 +25,7 @@ public class GettingOverItAgent : Agent {
 
     [Header("Episode")]
     [SerializeField] float goalY = 6.5f;
-    [SerializeField] float fallY = -3.0f;
+    [SerializeField] float fallY = -4.0f;
     [SerializeField] float stepPenalty = -0.0001f;
     [SerializeField] float successReward = 10.0f;
     [SerializeField] float fallPenalty = -1.0f;

@@ -6,11 +6,14 @@ from .config import (
     TrainingConfig,
     resolve_torch_device,
 )
+from .replay_buffer import ReplayBatch, ReplayBuffer
 
 __all__ = [
     "EnvironmentConfig",
     "EvaluationConfig",
     "RLAlgorithm",
+    "ReplayBatch",
+    "ReplayBuffer",
     "SACConfig",
     "TrainingConfig",
     "create_algorithm",

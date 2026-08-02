@@ -112,19 +112,13 @@ def test_algorithm_factory_constructs_sac():
     assert isinstance(algorithm, SACAlgorithm)
 
 
-def test_training_fails_before_unity_is_opened(monkeypatch):
-    monkeypatch.setattr(
-        train.gym,
-        "make",
-        lambda *args, **kwargs: pytest.fail("Unity was opened"),
+def test_training_cli_parses_resume_checkpoint():
+    config = train.parse_config(
+        ["--resume-from", "old-checkpoint", "--total-steps", "5"]
     )
-    config = TrainingConfig(
-        sac=SACConfig(
-            hidden_sizes=(8,), replay_capacity=10, batch_size=4
-        )
-    )
-    with pytest.raises(NotImplementedError, match="training loop"):
-        train.run_training(config)
+
+    assert config.resume_from == Path("old-checkpoint")
+    assert config.total_steps == 5
 
 
 def test_evaluation_fails_before_unity_is_opened(monkeypatch):

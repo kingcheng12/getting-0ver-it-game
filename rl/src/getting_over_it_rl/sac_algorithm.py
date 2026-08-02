@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import asdict, fields, replace
+from dataclasses import asdict, dataclass, fields, replace
 import os
 from pathlib import Path
 import tempfile
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import gymnasium as gym
 import numpy as np
@@ -15,7 +15,30 @@ from .algorithm import RLAlgorithm
 from .config import SACConfig
 from .networks import create_sac_networks
 from .replay_buffer import ReplayBuffer
-from .sac_update import SACUpdater
+from .sac_update import SACUpdateMetrics, SACUpdater
+
+
+@dataclass(frozen=True)
+class EpisodeMetrics:
+    episode: int
+    environment_steps: int
+    episode_return: float
+    episode_length: int
+    maximum_height: float
+    terminated: bool
+    truncated: bool
+    outcome: str
+
+
+@dataclass(frozen=True)
+class TrainingSummary:
+    steps_completed: int
+    total_environment_steps: int
+    gradient_updates: int
+    episodes_completed: int
+    replay_size: int
+    episode_metrics: Tuple[EpisodeMetrics, ...]
+    last_update: Optional[SACUpdateMetrics]
 
 
 class SACAlgorithm(RLAlgorithm):
@@ -71,14 +94,128 @@ class SACAlgorithm(RLAlgorithm):
         self.episodes_completed = 0
 
     def ensure_training_ready(self) -> None:
-        raise NotImplementedError(
-            "The SAC algorithm components are ready, but the environment "
-            "training loop is not implemented yet. Implement roadmap "
-            "stage 7 before opening Unity for training."
+        return None
+
+    def learn(
+        self,
+        environment: gym.Env,
+        total_steps: int,
+        checkpoint_path: Optional[Path] = None,
+    ) -> TrainingSummary:
+        total_steps = self._positive_steps(total_steps)
+        self._validate_environment(environment)
+        output_path = (
+            None if checkpoint_path is None else Path(checkpoint_path)
         )
 
-    def learn(self, environment: gym.Env, total_steps: int) -> None:
-        self.ensure_training_ready()
+        observation, info = environment.reset(
+            seed=self.seed + self.episodes_completed
+        )
+        observation = self._validate_environment_observation(observation)
+        episode_return = 0.0
+        episode_length = 0
+        maximum_height = self._maximum_height(info, 0.0)
+        completed_episodes: List[EpisodeMetrics] = []
+        last_update = None
+
+        for _ in range(total_steps):
+            if self.environment_steps < self.config.warmup_steps:
+                action = self.rng.uniform(
+                    -1.0, 1.0, size=self.action_dimension
+                ).astype(np.float32)
+            else:
+                action = self.predict(observation, deterministic=False)
+
+            (
+                next_observation,
+                reward,
+                terminated,
+                truncated,
+                next_info,
+            ) = environment.step(action)
+            next_observation = self._validate_environment_observation(
+                next_observation
+            )
+            reward = self._finite_reward(reward)
+            terminated = self._boolean_flag(terminated, "terminated")
+            truncated = self._boolean_flag(truncated, "truncated")
+            if terminated and truncated:
+                raise ValueError(
+                    "environment returned both terminated and truncated"
+                )
+
+            self.replay_buffer.add(
+                observation,
+                action,
+                reward,
+                next_observation,
+                terminated,
+                truncated,
+            )
+            self.environment_steps += 1
+            episode_return += reward
+            episode_length += 1
+            maximum_height = max(
+                maximum_height,
+                self._maximum_height(next_info, maximum_height),
+            )
+
+            if (
+                self.environment_steps >= self.config.warmup_steps
+                and len(self.replay_buffer) >= self.config.batch_size
+            ):
+                for _ in range(self.config.updates_per_step):
+                    batch = self.replay_buffer.sample(
+                        self.config.batch_size, device=self.device
+                    )
+                    last_update = self.updater.update(batch)
+                    self.gradient_updates += 1
+
+            if terminated or truncated:
+                self.episodes_completed += 1
+                metrics = EpisodeMetrics(
+                    episode=self.episodes_completed,
+                    environment_steps=self.environment_steps,
+                    episode_return=episode_return,
+                    episode_length=episode_length,
+                    maximum_height=maximum_height,
+                    terminated=terminated,
+                    truncated=truncated,
+                    outcome=self._episode_outcome(
+                        terminated, truncated, reward
+                    ),
+                )
+                completed_episodes.append(metrics)
+                self._print_episode(metrics)
+                observation, info = environment.reset(
+                    seed=self.seed + self.episodes_completed
+                )
+                observation = self._validate_environment_observation(
+                    observation
+                )
+                episode_return = 0.0
+                episode_length = 0
+                maximum_height = self._maximum_height(info, 0.0)
+            else:
+                observation = next_observation
+
+            if (
+                output_path is not None
+                and self.environment_steps
+                % self.config.checkpoint_interval
+                == 0
+            ):
+                self.save(output_path)
+
+        return TrainingSummary(
+            steps_completed=total_steps,
+            total_environment_steps=self.environment_steps,
+            gradient_updates=self.gradient_updates,
+            episodes_completed=self.episodes_completed,
+            replay_size=len(self.replay_buffer),
+            episode_metrics=tuple(completed_episodes),
+            last_update=last_update,
+        )
 
     def predict(
         self,
@@ -352,3 +489,95 @@ class SACAlgorithm(RLAlgorithm):
         if value < 0:
             raise ValueError(f"Checkpoint {name} must be non-negative")
         return int(value)
+
+    def _validate_environment(self, environment: gym.Env) -> None:
+        if not isinstance(environment, gym.Env):
+            raise TypeError("environment must be a Gymnasium environment")
+        observation_space = environment.observation_space
+        action_space = environment.action_space
+        if not isinstance(observation_space, gym.spaces.Box):
+            raise TypeError("environment observation_space must be Box")
+        if observation_space.shape != (self.observation_dimension,):
+            raise ValueError("environment observation dimension is incompatible")
+        if observation_space.dtype != np.float32:
+            raise TypeError("environment observations must use float32")
+        if not isinstance(action_space, gym.spaces.Box):
+            raise TypeError("environment action_space must be Box")
+        if action_space.shape != (self.action_dimension,):
+            raise ValueError("environment action dimension is incompatible")
+        if action_space.dtype != np.float32:
+            raise TypeError("environment actions must use float32")
+        if np.any(action_space.low > -1.0) or np.any(
+            action_space.high < 1.0
+        ):
+            raise ValueError("environment action space must contain [-1, 1]")
+
+    def _validate_environment_observation(
+        self, observation: Any
+    ) -> np.ndarray:
+        if not isinstance(observation, np.ndarray):
+            raise TypeError("environment observation must be a NumPy array")
+        if observation.dtype != np.float32:
+            raise TypeError("environment observation must use float32")
+        if observation.shape != (self.observation_dimension,):
+            raise ValueError("environment returned incompatible observation")
+        if not np.all(np.isfinite(observation)):
+            raise ValueError("environment returned non-finite observation")
+        return observation
+
+    @staticmethod
+    def _positive_steps(value: Any) -> int:
+        if isinstance(value, bool) or not isinstance(
+            value, (int, np.integer)
+        ):
+            raise TypeError("total_steps must be an integer")
+        if value <= 0:
+            raise ValueError("total_steps must be positive")
+        return int(value)
+
+    @staticmethod
+    def _finite_reward(value: Any) -> float:
+        if isinstance(value, (bool, np.bool_)) or not np.isscalar(value):
+            raise TypeError("environment reward must be a scalar")
+        reward = float(value)
+        if not np.isfinite(reward):
+            raise ValueError("environment returned non-finite reward")
+        return reward
+
+    @staticmethod
+    def _boolean_flag(value: Any, name: str) -> bool:
+        if not isinstance(value, (bool, np.bool_)):
+            raise TypeError(f"environment {name} must be a boolean")
+        return bool(value)
+
+    @staticmethod
+    def _maximum_height(info: Any, fallback: float) -> float:
+        if not isinstance(info, dict):
+            return fallback
+        value = info.get("maximum_height", fallback)
+        if isinstance(value, (bool, np.bool_)) or not np.isscalar(value):
+            return fallback
+        height = float(value)
+        return height if np.isfinite(height) else fallback
+
+    @staticmethod
+    def _episode_outcome(
+        terminated: bool, truncated: bool, final_reward: float
+    ) -> str:
+        if truncated:
+            return "truncated"
+        if terminated:
+            return "success" if final_reward > 0.0 else "fall"
+        return "incomplete"
+
+    @staticmethod
+    def _print_episode(metrics: EpisodeMetrics) -> None:
+        print(
+            "episode="
+            f"{metrics.episode} steps={metrics.environment_steps} "
+            f"return={metrics.episode_return:.4f} "
+            f"length={metrics.episode_length} "
+            f"max_height={metrics.maximum_height:.4f} "
+            f"outcome={metrics.outcome}",
+            flush=True,
+        )

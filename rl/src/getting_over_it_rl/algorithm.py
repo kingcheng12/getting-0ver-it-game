@@ -12,7 +12,12 @@ class RLAlgorithm(ABC):
     """Framework-neutral contract for a future continuous-control agent."""
 
     @abstractmethod
-    def learn(self, environment: gym.Env, total_steps: int) -> None:
+    def learn(
+        self,
+        environment: gym.Env,
+        total_steps: int,
+        checkpoint_path: Optional[Path] = None,
+    ) -> object:
         """Update the policy using transitions from the environment."""
 
     def ensure_training_ready(self) -> None:

@@ -130,6 +130,7 @@ class TrainingConfig:
     checkpoint_path: Path = field(
         default_factory=lambda: checkpoint_root() / "latest"
     )
+    resume_from: Optional[Path] = None
 
     def __post_init__(self) -> None:
         if self.total_steps <= 0:

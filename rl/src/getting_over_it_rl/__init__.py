@@ -14,10 +14,11 @@ from .networks import (
     create_sac_networks,
 )
 from .sac_update import SACUpdateMetrics, SACUpdater
-from .sac_algorithm import SACAlgorithm
+from .sac_algorithm import EpisodeMetrics, SACAlgorithm, TrainingSummary
 
 __all__ = [
     "EnvironmentConfig",
+    "EpisodeMetrics",
     "EvaluationConfig",
     "GaussianActor",
     "QCritic",
@@ -30,6 +31,7 @@ __all__ = [
     "SACUpdateMetrics",
     "SACUpdater",
     "TrainingConfig",
+    "TrainingSummary",
     "create_algorithm",
     "create_sac_networks",
     "resolve_torch_device",

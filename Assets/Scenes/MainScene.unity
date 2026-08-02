@@ -2538,7 +2538,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 1
   goalY: 6.5
-  fallY: -3
+  fallY: -4
   stepPenalty: -0.0001
   successReward: 10
   fallPenalty: -1

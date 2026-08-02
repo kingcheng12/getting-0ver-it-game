@@ -23,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-episode-steps", type=int, default=1250)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--episodes", type=int, default=10)
+    parser.add_argument("--device", default="cpu")
     parser.add_argument(
         "--checkpoint-path",
         type=Path,
@@ -43,6 +44,7 @@ def parse_config(argv: Optional[Sequence[str]] = None) -> EvaluationConfig:
         ),
         seed=args.seed,
         episodes=args.episodes,
+        device=args.device,
         checkpoint_path=(
             args.checkpoint_path
             if args.checkpoint_path is not None

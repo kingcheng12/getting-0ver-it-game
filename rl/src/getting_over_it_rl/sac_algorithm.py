@@ -47,6 +47,7 @@ class SACAlgorithm(RLAlgorithm):
     CHECKPOINT_VERSION = 1
     DEFAULT_OBSERVATION_DIMENSION = 20
     DEFAULT_ACTION_DIMENSION = 2
+    PROGRESS_INTERVAL = 1_000
 
     def __init__(
         self,
@@ -117,6 +118,12 @@ class SACAlgorithm(RLAlgorithm):
         maximum_height = self._maximum_height(info, 0.0)
         completed_episodes: List[EpisodeMetrics] = []
         last_update = None
+        print(
+            f"training_started step={self.environment_steps} "
+            f"additional_steps={total_steps} device={self.device} "
+            f"warmup_steps={self.config.warmup_steps}",
+            flush=True,
+        )
 
         for _ in range(total_steps):
             if self.environment_steps < self.config.warmup_steps:
@@ -199,6 +206,9 @@ class SACAlgorithm(RLAlgorithm):
             else:
                 observation = next_observation
 
+            if self.environment_steps % self.PROGRESS_INTERVAL == 0:
+                self._print_progress(last_update)
+
             if (
                 output_path is not None
                 and self.environment_steps
@@ -206,6 +216,11 @@ class SACAlgorithm(RLAlgorithm):
                 == 0
             ):
                 self.save(output_path)
+                print(
+                    f"checkpoint_saved step={self.environment_steps} "
+                    f"path={output_path}",
+                    flush=True,
+                )
 
         return TrainingSummary(
             steps_completed=total_steps,
@@ -579,5 +594,23 @@ class SACAlgorithm(RLAlgorithm):
             f"length={metrics.episode_length} "
             f"max_height={metrics.maximum_height:.4f} "
             f"outcome={metrics.outcome}",
+            flush=True,
+        )
+
+    def _print_progress(
+        self, last_update: Optional[SACUpdateMetrics]
+    ) -> None:
+        update_text = "updates_not_started"
+        if last_update is not None:
+            update_text = (
+                f"actor_loss={last_update.actor_loss:.4f} "
+                f"critic_1_loss={last_update.critic_1_loss:.4f} "
+                f"critic_2_loss={last_update.critic_2_loss:.4f} "
+                f"alpha={last_update.entropy_coefficient:.4f}"
+            )
+        print(
+            f"training_progress step={self.environment_steps} "
+            f"updates={self.gradient_updates} "
+            f"replay_size={len(self.replay_buffer)} {update_text}",
             flush=True,
         )

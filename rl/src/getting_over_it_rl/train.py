@@ -60,6 +60,11 @@ def run_training(
     config: TrainingConfig,
     algorithm_factory: AlgorithmFactory = create_algorithm,
 ) -> None:
+    print(
+        f"Initializing SAC on {config.sac.device}. Keep Unity out of "
+        "Play mode until Python prints the waiting-for-Unity message.",
+        flush=True,
+    )
     if config.resume_from is None:
         algorithm = algorithm_factory(config=config.sac, seed=config.seed)
     else:
@@ -67,6 +72,7 @@ def run_training(
             config.resume_from, device=config.sac.device
         )
     algorithm.ensure_training_ready()
+    print("SAC initialized; opening the Unity connection.", flush=True)
 
     environment: Optional[gym.Env] = None
     try:

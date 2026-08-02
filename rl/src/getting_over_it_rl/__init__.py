@@ -15,11 +15,17 @@ from .networks import (
 )
 from .sac_update import SACUpdateMetrics, SACUpdater
 from .sac_algorithm import EpisodeMetrics, SACAlgorithm, TrainingSummary
+from .evaluation_metrics import (
+    EvaluationEpisodeMetrics,
+    EvaluationSummary,
+)
 
 __all__ = [
     "EnvironmentConfig",
     "EpisodeMetrics",
     "EvaluationConfig",
+    "EvaluationEpisodeMetrics",
+    "EvaluationSummary",
     "GaussianActor",
     "QCritic",
     "RLAlgorithm",

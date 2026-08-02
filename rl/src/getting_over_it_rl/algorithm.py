@@ -5,13 +5,23 @@ from typing import Optional
 import gymnasium as gym
 import numpy as np
 
+from .config import SACConfig
+
 
 class RLAlgorithm(ABC):
     """Framework-neutral contract for a future continuous-control agent."""
 
     @abstractmethod
-    def learn(self, environment: gym.Env, total_steps: int) -> None:
+    def learn(
+        self,
+        environment: gym.Env,
+        total_steps: int,
+        checkpoint_path: Optional[Path] = None,
+    ) -> object:
         """Update the policy using transitions from the environment."""
+
+    def ensure_training_ready(self) -> None:
+        """Fail before environment creation if learning is unavailable."""
 
     @abstractmethod
     def predict(
@@ -27,22 +37,34 @@ class RLAlgorithm(ABC):
 
     @classmethod
     @abstractmethod
-    def load(cls, path: Path) -> "RLAlgorithm":
+    def load(
+        cls, path: Path, device: Optional[str] = None
+    ) -> "RLAlgorithm":
         """Restore an algorithm from a checkpoint."""
 
 
 def create_algorithm(
     checkpoint_path: Optional[Path] = None,
+    *,
+    config: Optional[SACConfig] = None,
+    seed: int = 0,
+    device: Optional[str] = None,
 ) -> RLAlgorithm:
-    """Construct or load the algorithm selected for this project."""
-    checkpoint_hint = (
-        f" The requested checkpoint was: {checkpoint_path}."
-        if checkpoint_path is not None
-        else ""
-    )
-    raise NotImplementedError(
-        "No reinforcement-learning algorithm is configured. Implement "
-        "create_algorithm() in getting_over_it_rl/algorithm.py and choose "
-        "a continuous-control algorithm such as PPO or SAC."
-        + checkpoint_hint
-    )
+    """Construct a new SAC agent or restore one from a checkpoint."""
+    from .sac_algorithm import SACAlgorithm
+
+    if config is not None and not isinstance(config, SACConfig):
+        raise TypeError("config must be an SACConfig")
+    if checkpoint_path is not None:
+        if config is not None:
+            raise ValueError(
+                "config cannot be supplied when loading a checkpoint"
+            )
+        return SACAlgorithm.load(checkpoint_path, device=device)
+    if device is not None:
+        if config is not None:
+            raise ValueError(
+                "device must be set through config for a new algorithm"
+            )
+        config = SACConfig(device=device)
+    return SACAlgorithm(config=config or SACConfig(), seed=seed)

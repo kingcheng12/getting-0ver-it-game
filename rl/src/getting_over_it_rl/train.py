@@ -8,7 +8,7 @@ import getting_over_it_env  # noqa: F401 - registers the environment
 from getting_over_it_env import ENVIRONMENT_ID
 
 from .algorithm import RLAlgorithm, create_algorithm
-from .config import EnvironmentConfig, TrainingConfig
+from .config import EnvironmentConfig, SACConfig, TrainingConfig
 
 AlgorithmFactory = Callable[[], RLAlgorithm]
 
@@ -23,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-episode-steps", type=int, default=1250)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--total-steps", type=int, default=100_000)
+    parser.add_argument("--device", default="cpu")
     parser.add_argument(
         "--checkpoint-path",
         type=Path,
@@ -43,6 +44,7 @@ def parse_config(argv: Optional[Sequence[str]] = None) -> TrainingConfig:
         ),
         seed=args.seed,
         total_steps=args.total_steps,
+        sac=SACConfig(device=args.device),
         checkpoint_path=(
             args.checkpoint_path
             if args.checkpoint_path is not None

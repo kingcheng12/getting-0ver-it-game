@@ -13,6 +13,7 @@ dependencies = [
     "mlagents-envs==0.26.0",
     "numpy==1.23.5",
     "protobuf==3.20.3",
+    "torch==2.4.1",
 ]
 
 [project.scripts]
@@ -33,3 +34,11 @@ packages = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }

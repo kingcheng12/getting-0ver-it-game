@@ -1,64 +1,136 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 public class PlayerControl : MonoBehaviour {
+    const int ContactBufferSize = 8;
+
     public Transform hammerHead;
     public Transform body;
-
     public float maxRange = 2.0f;
 
-    // Start is called before the first frame update
-    void Start() {
-        Physics2D.IgnoreCollision(hammerHead.GetComponent<Collider2D>(),
-                                  body.GetComponent<Collider2D>());
+    readonly Collider2D[] contactResults = new Collider2D[ContactBufferSize];
+
+    Rigidbody2D hammerRigidbody;
+    Rigidbody2D bodyRigidbody;
+    Collider2D hammerCollider;
+    Collider2D bodyCollider;
+    ContactFilter2D terrainContactFilter;
+    Vector2 externalCommand;
+    bool externalControlEnabled;
+
+    public bool HammerTouchingTerrain { get; private set; }
+    public Vector2 LastAppliedCommand { get; private set; }
+
+    void Awake() {
+        CacheComponents();
+        InitializeContactFilter();
+        Physics2D.IgnoreCollision(hammerCollider, bodyCollider);
     }
 
-    // Update is called once per frame
     void FixedUpdate() {
-        // Screen center and mouse position in screen space
-        float depth = Mathf.Abs(Camera.main.transform.position.z);
+        Vector2 command =
+            externalControlEnabled ? externalCommand : GetMouseCommand();
+        ApplyNormalizedCommand(command);
+    }
+
+    void CacheComponents() {
+        if (hammerHead == null || body == null) {
+            throw new MissingReferenceException(
+                "PlayerControl requires hammerHead and body transforms.");
+        }
+
+        hammerRigidbody = hammerHead.GetComponent<Rigidbody2D>();
+        bodyRigidbody = body.GetComponent<Rigidbody2D>();
+        hammerCollider = hammerHead.GetComponent<Collider2D>();
+        bodyCollider = body.GetComponent<Collider2D>();
+
+        if (hammerRigidbody == null || bodyRigidbody == null ||
+            hammerCollider == null || bodyCollider == null) {
+            throw new MissingComponentException(
+                "PlayerControl requires Rigidbody2D and Collider2D components " +
+                "on both hammerHead and body.");
+        }
+    }
+
+    void InitializeContactFilter() {
+        terrainContactFilter = new ContactFilter2D {
+            useLayerMask = true,
+            layerMask = LayerMask.GetMask("Default"),
+        };
+    }
+
+    public Vector2 GetMouseCommand() {
+        Camera mainCamera = Camera.main;
+        if (mainCamera == null || maxRange <= Mathf.Epsilon) {
+            return Vector2.zero;
+        }
+
+        float depth = Mathf.Abs(mainCamera.transform.position.z);
         Vector3 center =
-            new Vector3(Screen.width / 2, Screen.height / 2, depth);
+            new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, depth);
         Vector3 mouse =
             new Vector3(Input.mousePosition.x, Input.mousePosition.y, depth);
 
-        // Transform to world space
-        center = Camera.main.ScreenToWorldPoint(center);
-        mouse = Camera.main.ScreenToWorldPoint(mouse);
+        center = mainCamera.ScreenToWorldPoint(center);
+        mouse = mainCamera.ScreenToWorldPoint(mouse);
 
-        // Compute mouseVec for hammer control
-        Vector3 mouseVec = Vector3.ClampMagnitude(mouse - center, maxRange);
+        return Vector2.ClampMagnitude((mouse - center) / maxRange, 1.0f);
+    }
 
-        // hammerHead.GetComponent<Rigidbody2D>().MovePosition(body.position +
-        // mouseVec); return;
+    public void SetExternalControlEnabled(bool enabled) {
+        externalControlEnabled = enabled;
+        if (!enabled) {
+            externalCommand = Vector2.zero;
+        }
+    }
 
-        // Check if hammer head is collided with scene objects
-        ContactFilter2D contactFilter = new ContactFilter2D();
-        contactFilter.useLayerMask = true;
-        contactFilter.layerMask = LayerMask.GetMask("Default");
-        Collider2D[] results = new Collider2D[5];
-        if (hammerHead.GetComponent<Rigidbody2D>().OverlapCollider(
-                contactFilter, results) > 0)  // If collided with scene objects
-        {
-            // Update body pos
-            Vector3 targetBodyPos = hammerHead.position - mouseVec;
+    public void SetExternalCommand(Vector2 normalizedCommand) {
+        externalCommand = Vector2.ClampMagnitude(normalizedCommand, 1.0f);
+    }
 
-            Vector3 force = (targetBodyPos - body.position) * 80.0f;
-            body.GetComponent<Rigidbody2D>().AddForce(force);
+    public void ResetControlState() {
+        externalCommand = Vector2.zero;
+        LastAppliedCommand = Vector2.zero;
+        HammerTouchingTerrain = false;
+    }
 
-            body.GetComponent<Rigidbody2D>().velocity = Vector2.ClampMagnitude(
-                body.GetComponent<Rigidbody2D>().velocity, 6);
+    public void ApplyNormalizedCommand(Vector2 normalizedCommand) {
+        if (hammerRigidbody == null) {
+            CacheComponents();
+            InitializeContactFilter();
         }
 
-        // Compute new hammer pos
-        Vector3 newHammerPos = body.position + mouseVec;
-        Vector3 hammerMoveVec = newHammerPos - hammerHead.position;
-        newHammerPos = hammerHead.position + hammerMoveVec * 0.2f;
+        Vector2 command = Vector2.ClampMagnitude(normalizedCommand, 1.0f);
+        Vector2 hammerOffset = command * maxRange;
+        LastAppliedCommand = command;
 
-        // Update hammer pos
-        hammerHead.GetComponent<Rigidbody2D>().MovePosition(newHammerPos);
+        int contactCount = hammerCollider.OverlapCollider(
+            terrainContactFilter, contactResults);
+        HammerTouchingTerrain = false;
+        for (int i = 0; i < contactCount; i++) {
+            Collider2D candidate = contactResults[i];
+            if (candidate != null &&
+                !candidate.transform.IsChildOf(transform)) {
+                HammerTouchingTerrain = true;
+                break;
+            }
+        }
 
-        // Update hammer rotation
+        if (HammerTouchingTerrain) {
+            Vector2 targetBodyPosition =
+                (Vector2)hammerHead.position - hammerOffset;
+            Vector2 force =
+                (targetBodyPosition - (Vector2)body.position) * 80.0f;
+            bodyRigidbody.AddForce(force);
+            bodyRigidbody.velocity =
+                Vector2.ClampMagnitude(bodyRigidbody.velocity, 6.0f);
+        }
+
+        Vector2 desiredHammerPosition = (Vector2)body.position + hammerOffset;
+        Vector2 smoothedHammerPosition = Vector2.Lerp(
+            hammerHead.position, desiredHammerPosition, 0.2f);
+        hammerRigidbody.MovePosition(smoothedHammerPosition);
+
         hammerHead.rotation = Quaternion.FromToRotation(
-            Vector3.right, newHammerPos - body.position);
+            Vector3.right, smoothedHammerPosition - (Vector2)body.position);
     }
 }

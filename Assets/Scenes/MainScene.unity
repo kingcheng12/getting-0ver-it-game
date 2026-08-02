@@ -2454,6 +2454,9 @@ GameObject:
   m_Component:
   - component: {fileID: 290370113}
   - component: {fileID: 290370114}
+  - component: {fileID: 290370117}
+  - component: {fileID: 290370116}
+  - component: {fileID: 290370115}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -2492,8 +2495,83 @@ MonoBehaviour:
   hammerHead: {fileID: 720087029}
   body: {fileID: 1051555076}
   maxRange: 0.9
-  riseSound: {fileID: 8300000, guid: 9296488e8eaf878459c63ae1c2b39c5b, type: 3}
-  hitGroundSound: {fileID: 8300000, guid: e4dce1c4b7362d04a8b6f382291d33ea, type: 3}
+--- !u!114 &290370115
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 290370112}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3a5c9d521e5ef4759a8246a07d52221e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  DecisionPeriod: 4
+  TakeActionsBetweenDecisions: 1
+--- !u!114 &290370116
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 290370112}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 828d3da7869a04c479d37116ec579d89, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  agentParameters:
+    maxStep: 0
+  hasUpgradedFromAgentParameters: 1
+  MaxStep: 0
+  playerControl: {fileID: 290370114}
+  body: {fileID: 1051555077}
+  hammer: {fileID: 720087031}
+  followCamera: {fileID: 519420031}
+  positionScale: 10
+  bodyVelocityScale: 6
+  hammerVelocityScale: 10
+  heightScale: 6.5
+  rayLength: 2
+  terrainMask:
+    serializedVersion: 2
+    m_Bits: 1
+  goalY: 6.5
+  fallY: -3
+  stepPenalty: -0.0001
+  successReward: 10
+  fallPenalty: -1
+--- !u!114 &290370117
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 290370112}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5d1c4e0b1822b495aa52bc52839ecb30, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_BrainParameters:
+    VectorObservationSize: 20
+    NumStackedVectorObservations: 1
+    m_ActionSpec:
+      m_NumContinuousActions: 2
+      BranchSizes: 
+    VectorActionSize: 02000000
+    VectorActionDescriptions: []
+    VectorActionSpaceType: 1
+    hasUpgradedBrainParametersWithActionSpec: 1
+  m_Model: {fileID: 0}
+  m_InferenceDevice: 0
+  m_BehaviorType: 0
+  m_BehaviorName: GettingOverIt
+  TeamId: 0
+  m_UseChildSensors: 1
+  m_UseChildActuators: 1
+  m_ObservableAttributeHandling: 0
 --- !u!1 &311916033
 GameObject:
   m_ObjectHideFlags: 0

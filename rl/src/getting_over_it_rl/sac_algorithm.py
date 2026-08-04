@@ -376,6 +376,41 @@ class SACAlgorithm(RLAlgorithm):
             raise ValueError("SAC checkpoint RNG state is invalid") from error
         return algorithm
 
+    @classmethod
+    def initialize_from_checkpoint(
+        cls,
+        path: Path,
+        config: Optional[SACConfig] = None,
+        seed: int = 0,
+    ) -> "SACAlgorithm":
+        """Create clean training state from trusted checkpoint weights."""
+        source = cls.load(path, device="cpu")
+        target_config = config or replace(source.config, device="cpu")
+        algorithm = cls(
+            config=target_config,
+            observation_dimension=source.observation_dimension,
+            action_dimension=source.action_dimension,
+            seed=seed,
+        )
+        algorithm.networks.actor.load_state_dict(
+            source.networks.actor.state_dict(), strict=True
+        )
+        algorithm.networks.critic_1.load_state_dict(
+            source.networks.critic_1.state_dict(), strict=True
+        )
+        algorithm.networks.critic_2.load_state_dict(
+            source.networks.critic_2.state_dict(), strict=True
+        )
+        algorithm.networks.target_critic_1.load_state_dict(
+            algorithm.networks.critic_1.state_dict(), strict=True
+        )
+        algorithm.networks.target_critic_2.load_state_dict(
+            algorithm.networks.critic_2.state_dict(), strict=True
+        )
+        algorithm.networks.target_critic_1.eval()
+        algorithm.networks.target_critic_2.eval()
+        return algorithm
+
     def _checkpoint_state(self) -> Dict[str, Any]:
         return {
             "version": self.CHECKPOINT_VERSION,

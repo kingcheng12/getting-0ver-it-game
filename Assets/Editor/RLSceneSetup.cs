@@ -8,6 +8,9 @@ using UnityEngine.SceneManagement;
 
 public static class RLSceneSetup {
     const string MainScenePath = "Assets/Scenes/MainScene.unity";
+    const string WaypointRootName = "RL Waypoints";
+    const string FirstWaypointName = "Waypoint 1 - First Pillar Exit";
+    const string SecondWaypointName = "Waypoint 2 - Second Pillar";
 
     [MenuItem("RL/Configure Main Scene")]
     public static void ConfigureMainScene() {
@@ -44,8 +47,9 @@ public static class RLSceneSetup {
                 "MainScene requires body and hammer Rigidbody2D components " +
                 "and a camera tagged MainCamera.");
         }
+        RLWaypoint[] waypoints = ConfigureWaypoints(body.position);
 
-        agent.Configure(playerControl, body, hammer, camera);
+        agent.Configure(playerControl, body, hammer, camera, waypoints);
         agent.MaxStep = 0;
 
         behavior.BehaviorName = "GettingOverIt";
@@ -69,7 +73,14 @@ public static class RLSceneSetup {
 
         Debug.Log(
             "Configured MainScene for Gymnasium communication: " +
-            "20 observations, 2 continuous actions, decision period 4.");
+            "20 observations, 2 continuous actions, decision period 4, " +
+            "and two waypoint markers. Drag the waypoint markers to the " +
+            "desired body locations in the Scene view before training.");
+    }
+
+    [MenuItem("RL/Configure Main Scene", true)]
+    static bool CanConfigureMainScene() {
+        return !EditorApplication.isPlayingOrWillChangePlaymode;
     }
 
     [MenuItem("RL/Validate Main Scene")]
@@ -82,7 +93,8 @@ public static class RLSceneSetup {
                      playerObject.GetComponent<PlayerControl>() != null &&
                      playerObject.GetComponent<GettingOverItAgent>() != null &&
                      playerObject.GetComponent<BehaviorParameters>() != null &&
-                     playerObject.GetComponent<DecisionRequester>() != null;
+                     playerObject.GetComponent<DecisionRequester>() != null &&
+                     FindWaypoints().Length == 2;
 
         if (!valid) {
             throw new UnityEditor.Build.BuildFailedException(
@@ -113,11 +125,68 @@ public static class RLSceneSetup {
         Debug.Log("MainScene RL setup is valid: " + scene.path);
     }
 
+    [MenuItem("RL/Validate Main Scene", true)]
+    static bool CanValidateMainScene() {
+        return !EditorApplication.isPlayingOrWillChangePlaymode;
+    }
+
     static T GetOrAddComponent<T>(GameObject gameObject)
         where T : Component {
         T component = gameObject.GetComponent<T>();
         return component != null
             ? component
             : Undo.AddComponent<T>(gameObject);
+    }
+
+    static RLWaypoint[] ConfigureWaypoints(Vector2 bodyPosition) {
+        GameObject root = GameObject.Find(WaypointRootName);
+        if (root == null) {
+            root = new GameObject(WaypointRootName);
+            Undo.RegisterCreatedObjectUndo(root, "Create RL waypoints");
+        }
+
+        RLWaypoint first = GetOrCreateWaypoint(
+            root.transform,
+            FirstWaypointName,
+            bodyPosition + new Vector2(3.0f, 1.5f));
+        RLWaypoint second = GetOrCreateWaypoint(
+            root.transform,
+            SecondWaypointName,
+            bodyPosition + new Vector2(6.0f, 3.0f));
+        return new[] { first, second };
+    }
+
+    static RLWaypoint GetOrCreateWaypoint(
+        Transform parent,
+        string waypointName,
+        Vector2 defaultPosition
+    ) {
+        Transform existing = parent.Find(waypointName);
+        GameObject waypointObject;
+        if (existing == null) {
+            waypointObject = new GameObject(waypointName);
+            Undo.RegisterCreatedObjectUndo(
+                waypointObject, "Create RL waypoint");
+            waypointObject.transform.SetParent(parent, true);
+            waypointObject.transform.position = defaultPosition;
+        } else {
+            waypointObject = existing.gameObject;
+        }
+        return GetOrAddComponent<RLWaypoint>(waypointObject);
+    }
+
+    static RLWaypoint[] FindWaypoints() {
+        GameObject root = GameObject.Find(WaypointRootName);
+        if (root == null) {
+            return new RLWaypoint[0];
+        }
+        RLWaypoint first = root.transform
+            .Find(FirstWaypointName)?.GetComponent<RLWaypoint>();
+        RLWaypoint second = root.transform
+            .Find(SecondWaypointName)?.GetComponent<RLWaypoint>();
+        if (first == null || second == null) {
+            return new RLWaypoint[0];
+        }
+        return new[] { first, second };
     }
 }

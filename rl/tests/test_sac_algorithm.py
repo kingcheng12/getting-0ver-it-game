@@ -211,6 +211,61 @@ def test_factory_constructs_and_loads_sac_algorithm(tmp_path):
     assert loaded.seed == 4
 
 
+def test_weights_only_initialization_preserves_networks_and_resets_state(
+    tmp_path,
+):
+    source = SACAlgorithm(config=small_config(), seed=11)
+    populate_algorithm(source)
+    checkpoint = tmp_path / "old-reward"
+    source.save(checkpoint)
+
+    transferred = SACAlgorithm.initialize_from_checkpoint(
+        checkpoint,
+        config=small_config(),
+        seed=23,
+    )
+
+    assert_module_equal(source.networks.actor, transferred.networks.actor)
+    assert_module_equal(source.networks.critic_1, transferred.networks.critic_1)
+    assert_module_equal(source.networks.critic_2, transferred.networks.critic_2)
+    assert_module_equal(
+        transferred.networks.critic_1,
+        transferred.networks.target_critic_1,
+    )
+    assert_module_equal(
+        transferred.networks.critic_2,
+        transferred.networks.target_critic_2,
+    )
+    assert len(transferred.replay_buffer) == 0
+    assert transferred.environment_steps == 0
+    assert transferred.gradient_updates == 0
+    assert transferred.episodes_completed == 0
+    assert transferred.seed == 23
+    assert not transferred.updater.actor_optimizer.state_dict()["state"]
+    assert not transferred.updater.critic_1_optimizer.state_dict()["state"]
+    assert not transferred.updater.critic_2_optimizer.state_dict()["state"]
+    assert transferred.updater.alpha.item() == pytest.approx(0.2)
+
+
+def test_factory_supports_weights_only_initialization(tmp_path):
+    source = SACAlgorithm(config=small_config(), seed=3)
+    populate_algorithm(source)
+    checkpoint = tmp_path / "source"
+    source.save(checkpoint)
+
+    transferred = create_algorithm(
+        checkpoint,
+        config=small_config(),
+        seed=8,
+        weights_only=True,
+    )
+
+    assert isinstance(transferred, SACAlgorithm)
+    assert transferred.seed == 8
+    assert len(transferred.replay_buffer) == 0
+    assert transferred.environment_steps == 0
+
+
 @pytest.mark.parametrize("corruption", ["version", "dimension", "keys"])
 def test_load_rejects_incompatible_checkpoints(tmp_path, corruption):
     algorithm = SACAlgorithm(config=small_config())

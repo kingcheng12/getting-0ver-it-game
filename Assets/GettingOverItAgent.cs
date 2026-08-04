@@ -30,6 +30,14 @@ public class GettingOverItAgent : Agent {
     [SerializeField] float successReward = 10.0f;
     [SerializeField] float fallPenalty = -1.0f;
 
+    [Header("Waypoint curriculum")]
+    [SerializeField] RLWaypoint[] waypoints = new RLWaypoint[0];
+    [SerializeField] float heightProgressScale = 0.25f;
+    [SerializeField] float waypointProgressScale = 0.5f;
+    [SerializeField] float waypointReward = 1.0f;
+    [SerializeField] float finalWaypointReward = 10.0f;
+    [SerializeField] bool terminateAtFinalWaypoint = true;
+
     Vector2 initialBodyPosition;
     float initialBodyRotation;
     Vector2 initialHammerPosition;
@@ -37,7 +45,10 @@ public class GettingOverItAgent : Agent {
     Vector3 initialCameraPosition;
     Vector2 previousAction;
     float maximumHeight;
+    int activeWaypointIndex;
+    float previousWaypointDistance;
     bool initialStateCached;
+    bool waypointConfigurationValidated;
     Collider2D hammerCollider;
     readonly RaycastHit2D[] raycastResults =
         new RaycastHit2D[RaycastBufferSize];
@@ -53,12 +64,16 @@ public class GettingOverItAgent : Agent {
         PlayerControl control,
         Rigidbody2D bodyRigidbody,
         Rigidbody2D hammerRigidbody,
-        Camera camera
+        Camera camera,
+        RLWaypoint[] routeWaypoints = null
     ) {
         playerControl = control;
         body = bodyRigidbody;
         hammer = hammerRigidbody;
         followCamera = camera;
+        if (routeWaypoints != null) {
+            waypoints = routeWaypoints;
+        }
     }
 
     public override void Initialize() {
@@ -130,6 +145,7 @@ public class GettingOverItAgent : Agent {
 
         previousAction = Vector2.zero;
         maximumHeight = initialBodyPosition.y;
+        ResetWaypointProgress();
         playerControl.ResetControlState();
         playerControl.SetExternalControlEnabled(CommunicatorActive);
         Physics2D.SyncTransforms();
@@ -143,13 +159,20 @@ public class GettingOverItAgent : Agent {
             return;
         }
 
+        ValidateWaypointConfiguration();
+
         float height = body.position.y;
         if (height > maximumHeight) {
-            AddReward(height - maximumHeight);
+            AddReward(
+                (height - maximumHeight) * heightProgressScale);
             maximumHeight = height;
         }
 
         AddReward(stepPenalty);
+
+        if (UpdateWaypointProgress()) {
+            return;
+        }
 
         if (height >= goalY) {
             AddReward(successReward);
@@ -158,6 +181,79 @@ public class GettingOverItAgent : Agent {
             AddReward(fallPenalty);
             EndEpisode();
         }
+    }
+
+    void ValidateWaypointConfiguration() {
+        if (waypointConfigurationValidated) {
+            return;
+        }
+        if (waypoints == null || waypoints.Length < 2) {
+            throw new MissingReferenceException(
+                "Waypoint curriculum requires at least two ordered " +
+                "waypoints. Run RL > Configure Main Scene.");
+        }
+        for (int i = 0; i < waypoints.Length; i++) {
+            if (waypoints[i] == null) {
+                throw new MissingReferenceException(
+                    "Waypoint curriculum contains an unassigned marker " +
+                    "at index " + i + ".");
+            }
+        }
+        waypointConfigurationValidated = true;
+    }
+
+    void ResetWaypointProgress() {
+        activeWaypointIndex = 0;
+        previousWaypointDistance = HasActiveWaypoint()
+            ? DistanceToActiveWaypoint()
+            : 0.0f;
+    }
+
+    bool UpdateWaypointProgress() {
+        if (!HasActiveWaypoint()) {
+            return false;
+        }
+
+        RLWaypoint waypoint = waypoints[activeWaypointIndex];
+        float distance = DistanceToActiveWaypoint();
+        AddReward(
+            (previousWaypointDistance - distance) *
+            waypointProgressScale);
+        previousWaypointDistance = distance;
+
+        if (!waypoint.Contains(body.position)) {
+            return false;
+        }
+
+        bool finalWaypoint =
+            activeWaypointIndex == waypoints.Length - 1;
+        AddReward(finalWaypoint
+            ? finalWaypointReward
+            : waypointReward);
+        activeWaypointIndex++;
+
+        if (finalWaypoint && terminateAtFinalWaypoint) {
+            EndEpisode();
+            return true;
+        }
+
+        previousWaypointDistance = HasActiveWaypoint()
+            ? DistanceToActiveWaypoint()
+            : 0.0f;
+        return false;
+    }
+
+    bool HasActiveWaypoint() {
+        return waypoints != null &&
+               activeWaypointIndex >= 0 &&
+               activeWaypointIndex < waypoints.Length &&
+               waypoints[activeWaypointIndex] != null;
+    }
+
+    float DistanceToActiveWaypoint() {
+        return Vector2.Distance(
+            body.position,
+            waypoints[activeWaypointIndex].transform.position);
     }
 
     public override void CollectObservations(VectorSensor sensor) {

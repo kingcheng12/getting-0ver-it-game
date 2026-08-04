@@ -268,6 +268,44 @@ def test_run_training_loads_resume_checkpoint_and_saves_output(
     assert environment.closed
 
 
+def test_run_training_initializes_weights_without_old_training_state(
+    tmp_path, monkeypatch
+):
+    source_path = tmp_path / "old-reward"
+    output = tmp_path / "waypoint"
+    source = SACAlgorithm(config=small_config(warmup_steps=10), seed=9)
+    source.environment_steps = 20
+    source.replay_buffer.add(
+        np.zeros(20, np.float32),
+        np.zeros(2, np.float32),
+        3.0,
+        np.zeros(20, np.float32),
+        False,
+        False,
+    )
+    source.save(source_path)
+    environment = ScriptedEnvironment()
+    monkeypatch.setattr(
+        train.gym, "make", lambda *args, **kwargs: environment
+    )
+
+    config = TrainingConfig(
+        total_steps=1,
+        sac=small_config(warmup_steps=10),
+        checkpoint_path=output,
+        initialize_from=source_path,
+    )
+    train.run_training(config)
+
+    restored = SACAlgorithm.load(output)
+    assert restored.environment_steps == 1
+    assert len(restored.replay_buffer) == 1
+    assert restored.replay_buffer.state_dict()["rewards"][0, 0] == pytest.approx(
+        0.1
+    )
+    assert environment.closed
+
+
 @pytest.mark.parametrize("total_steps", [0, -1, 1.5, True])
 def test_learn_rejects_invalid_step_counts(total_steps):
     algorithm = SACAlgorithm(config=small_config())

@@ -131,10 +131,15 @@ class TrainingConfig:
         default_factory=lambda: checkpoint_root() / "latest"
     )
     resume_from: Optional[Path] = None
+    initialize_from: Optional[Path] = None
 
     def __post_init__(self) -> None:
         if self.total_steps <= 0:
             raise ValueError("total_steps must be positive")
+        if self.resume_from is not None and self.initialize_from is not None:
+            raise ValueError(
+                "resume_from and initialize_from are mutually exclusive"
+            )
 
 
 @dataclass(frozen=True)

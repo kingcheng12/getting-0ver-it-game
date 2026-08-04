@@ -31,6 +31,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
     )
     parser.add_argument("--resume-from", type=Path, default=None)
+    parser.add_argument(
+        "--initialize-from",
+        type=Path,
+        default=None,
+        help=(
+            "Reuse network weights from a checkpoint while resetting "
+            "replay, optimizers, entropy state, RNG state, and counters."
+        ),
+    )
     return parser
 
 
@@ -53,6 +62,7 @@ def parse_config(argv: Optional[Sequence[str]] = None) -> TrainingConfig:
             else defaults.checkpoint_path
         ),
         resume_from=args.resume_from,
+        initialize_from=args.initialize_from,
     )
 
 
@@ -65,7 +75,14 @@ def run_training(
         "Play mode until Python prints the waiting-for-Unity message.",
         flush=True,
     )
-    if config.resume_from is None:
+    if config.initialize_from is not None:
+        algorithm = algorithm_factory(
+            config.initialize_from,
+            config=config.sac,
+            seed=config.seed,
+            weights_only=True,
+        )
+    elif config.resume_from is None:
         algorithm = algorithm_factory(config=config.sac, seed=config.seed)
     else:
         algorithm = algorithm_factory(

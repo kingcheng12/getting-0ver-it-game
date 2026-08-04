@@ -121,6 +121,23 @@ def test_training_cli_parses_resume_checkpoint():
     assert config.total_steps == 5
 
 
+def test_training_cli_parses_weights_only_checkpoint():
+    config = train.parse_config(
+        ["--initialize-from", "old-checkpoint", "--total-steps", "5"]
+    )
+
+    assert config.initialize_from == Path("old-checkpoint")
+    assert config.resume_from is None
+
+
+def test_training_config_rejects_two_checkpoint_modes():
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        TrainingConfig(
+            resume_from=Path("resume"),
+            initialize_from=Path("initialize"),
+        )
+
+
 def test_evaluation_fails_before_unity_is_opened(monkeypatch):
     monkeypatch.setattr(
         evaluate.gym,

@@ -437,7 +437,11 @@ def _episode_from_transitions(
     if bool(truncated[-1, 0]):
         outcome = "truncated"
     elif bool(terminated[-1, 0]):
-        outcome = "successful" if float(rewards[-1, 0]) > 0.0 else "fall"
+        outcome = (
+            "successful"
+            if np.isclose(float(rewards[-1, 0]), 10.0)
+            else "fall"
+        )
     else:
         outcome = "incomplete"
     return DemonstrationEpisode(

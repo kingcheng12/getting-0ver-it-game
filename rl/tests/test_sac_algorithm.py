@@ -104,6 +104,26 @@ def test_algorithm_constructs_all_components_and_zeroed_counters():
     assert algorithm.episodes_completed == 0
 
 
+def test_warmup_override_updates_updater_and_checkpoint(tmp_path):
+    algorithm = SACAlgorithm(config=small_config(warmup_steps=4))
+
+    algorithm.set_warmup_steps(0)
+
+    assert algorithm.config.warmup_steps == 0
+    assert algorithm.updater.config.warmup_steps == 0
+    checkpoint = tmp_path / "warmup"
+    algorithm.save(checkpoint)
+    assert SACAlgorithm.load(checkpoint).config.warmup_steps == 0
+
+
+@pytest.mark.parametrize("value", [-1, 1.5, True])
+def test_warmup_override_rejects_invalid_values(value):
+    algorithm = SACAlgorithm(config=small_config())
+
+    with pytest.raises((TypeError, ValueError), match="warmup_steps"):
+        algorithm.set_warmup_steps(value)
+
+
 def test_predict_supports_deterministic_and_stochastic_actions():
     algorithm = SACAlgorithm(config=small_config(), seed=1)
     observation = np.zeros((20,), dtype=np.float32)

@@ -99,6 +99,19 @@ class SACAlgorithm(RLAlgorithm):
     def ensure_training_ready(self) -> None:
         return None
 
+    def set_warmup_steps(self, warmup_steps: int) -> None:
+        if isinstance(warmup_steps, bool) or not isinstance(
+            warmup_steps, (int, np.integer)
+        ):
+            raise TypeError("warmup_steps must be an integer")
+        if warmup_steps < 0:
+            raise ValueError("warmup_steps must be non-negative")
+        updated_config = replace(
+            self.config, warmup_steps=int(warmup_steps)
+        )
+        self.config = updated_config
+        self.updater.config = updated_config
+
     def set_demonstrations(self, buffer: DemonstrationBuffer) -> None:
         if not isinstance(buffer, DemonstrationBuffer):
             raise TypeError("buffer must be a DemonstrationBuffer")
@@ -679,7 +692,11 @@ class SACAlgorithm(RLAlgorithm):
         if truncated:
             return "truncated"
         if terminated:
-            return "success" if final_reward > 0.0 else "fall"
+            return (
+                "success"
+                if np.isclose(final_reward, 10.0)
+                else "fall"
+            )
         return "incomplete"
 
     @staticmethod

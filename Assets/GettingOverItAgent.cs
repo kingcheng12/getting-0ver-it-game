@@ -26,10 +26,8 @@ public class GettingOverItAgent : Agent {
     [SerializeField] LayerMask terrainMask = 1;
 
     [Header("Episode")]
-    [SerializeField] float goalY = 6.5f;
     [SerializeField] float fallY = -4.0f;
     [SerializeField] float stepPenalty = -0.0001f;
-    [SerializeField] float successReward = 10.0f;
     [SerializeField] float fallPenalty = -1.0f;
 
     [Header("Waypoint curriculum")]
@@ -38,7 +36,6 @@ public class GettingOverItAgent : Agent {
     [SerializeField] float waypointProgressScale = 0.5f;
     [SerializeField] float waypointReward = 1.0f;
     [SerializeField] float finalWaypointReward = 10.0f;
-    [SerializeField] bool terminateAtFinalWaypoint = true;
 
     Vector2 initialBodyPosition;
     float initialBodyRotation;
@@ -195,11 +192,8 @@ public class GettingOverItAgent : Agent {
             return;
         }
 
-        if (height >= goalY) {
-            AddReward(successReward);
-            EndEpisode();
-        } else if (height <= fallY) {
-            AddReward(fallPenalty);
+        if (height <= fallY) {
+            SetReward(fallPenalty);
             EndEpisode();
         }
     }
@@ -248,15 +242,15 @@ public class GettingOverItAgent : Agent {
 
         bool finalWaypoint =
             activeWaypointIndex == waypoints.Length - 1;
-        AddReward(finalWaypoint
-            ? finalWaypointReward
-            : waypointReward);
         activeWaypointIndex++;
 
-        if (finalWaypoint && terminateAtFinalWaypoint) {
+        if (finalWaypoint) {
+            SetReward(finalWaypointReward);
             EndEpisode();
             return true;
         }
+
+        AddReward(waypointReward);
 
         previousWaypointDistance = HasActiveWaypoint()
             ? DistanceToActiveWaypoint()

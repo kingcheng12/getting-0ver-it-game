@@ -168,7 +168,7 @@ def _episode_outcome(
     if truncated:
         return "truncated"
     if terminated:
-        return "success" if final_reward > 0.0 else "fall"
+        return "success" if np.isclose(final_reward, 10.0) else "fall"
     return "incomplete"
 
 

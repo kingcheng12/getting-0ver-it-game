@@ -57,7 +57,12 @@ def write_demo(path: Path, episodes=((70, "success"),)):
                     pair.agent_info.done = True
                 elif outcome != "incomplete":
                     pair.agent_info.done = True
-                    pair.agent_info.reward = 10.0 if outcome == "success" else -1.0
+                    if outcome == "success":
+                        pair.agent_info.reward = 10.0
+                    elif outcome == "positive-terminal":
+                        pair.agent_info.reward = 2.0
+                    else:
+                        pair.agent_info.reward = -1.0
             records.append(pair)
         agent_id += 1
 
@@ -126,6 +131,19 @@ def test_incomplete_episode_is_preserved(tmp_path):
     assert demo.episodes[0].length == 5
     assert not demo.episodes[0].terminated.any()
     assert not demo.episodes[0].truncated.any()
+
+
+def test_only_exact_waypoint_reward_is_successful(tmp_path):
+    demo = load_demonstration_file(
+        write_demo(
+            tmp_path / "terminal.demo",
+            ((3, "success"), (3, "positive-terminal")),
+        )
+    )
+    assert [episode.outcome for episode in demo.episodes] == [
+        "successful",
+        "fall",
+    ]
 
 
 def test_buffer_checkpoint_preserves_metadata_and_sampling_rng(tmp_path):

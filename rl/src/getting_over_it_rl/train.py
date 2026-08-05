@@ -26,6 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-episode-steps", type=int, default=1250)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--total-steps", type=int, default=100_000)
+    parser.add_argument("--warmup-steps", type=int, default=None)
     parser.add_argument("--device", default="cpu")
     parser.add_argument(
         "--checkpoint-path",
@@ -89,6 +90,7 @@ def parse_config(argv: Optional[Sequence[str]] = None) -> TrainingConfig:
         demonstrations=tuple(args.demonstration),
         demonstration_episodes=tuple(episode_selections),
         demonstration_filter=args.demo_filter,
+        warmup_steps_override=args.warmup_steps,
     )
 
 
@@ -115,6 +117,10 @@ def run_training(
             config.resume_from, device=config.sac.device
         )
     algorithm.ensure_training_ready()
+    if config.warmup_steps_override is not None:
+        if not isinstance(algorithm, SACAlgorithm):
+            raise TypeError("Warm-up override requires SACAlgorithm")
+        algorithm.set_warmup_steps(config.warmup_steps_override)
     explicit_demonstrations = bool(
         config.demonstrations or config.demonstration_episodes
     )
@@ -135,7 +141,16 @@ def run_training(
             f"from {len(buffer.episodes)} episodes.",
             flush=True,
         )
-    print("SAC initialized; opening the Unity connection.", flush=True)
+    warmup_text = (
+        str(algorithm.config.warmup_steps)
+        if isinstance(algorithm, SACAlgorithm)
+        else "unknown"
+    )
+    print(
+        f"SAC initialized with warmup_steps={warmup_text}; "
+        "opening the Unity connection.",
+        flush=True,
+    )
 
     environment: Optional[gym.Env] = None
     try:

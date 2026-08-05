@@ -2583,10 +2583,8 @@ MonoBehaviour:
   terrainMask:
     serializedVersion: 2
     m_Bits: 1
-  goalY: 6.5
   fallY: -4
   stepPenalty: -0.0001
-  successReward: 10
   fallPenalty: -1
   waypoints:
   - {fileID: 331191019}
@@ -2595,7 +2593,6 @@ MonoBehaviour:
   waypointProgressScale: 0.5
   waypointReward: 1
   finalWaypointReward: 10
-  terminateAtFinalWaypoint: 1
 --- !u!114 &290370117
 MonoBehaviour:
   m_ObjectHideFlags: 0

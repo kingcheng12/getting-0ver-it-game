@@ -38,6 +38,7 @@ def test_sac_foundation_defaults_to_cpu():
     assert config.hidden_sizes == (256, 256)
     assert config.replay_capacity == 200_000
     assert config.batch_size == 256
+    assert config.warmup_steps == 5_000
     assert config.initial_entropy_coefficient == 0.2
     assert config.device == "cpu"
     assert config.resolve_device().type == "cpu"
@@ -57,6 +58,8 @@ def test_cli_overrides_create_typed_configs(tmp_path: Path):
             "2",
             "--total-steps",
             "42",
+            "--warmup-steps",
+            "0",
             "--checkpoint-path",
             str(tmp_path / "model"),
         ]
@@ -67,6 +70,7 @@ def test_cli_overrides_create_typed_configs(tmp_path: Path):
 
     assert training.environment.worker_id == 2
     assert training.total_steps == 42
+    assert training.warmup_steps_override == 0
     assert training.sac.device == "cpu"
     assert training.checkpoint_path == tmp_path / "model"
     assert evaluation.episodes == 3
@@ -119,6 +123,17 @@ def test_training_cli_parses_resume_checkpoint():
 
     assert config.resume_from == Path("old-checkpoint")
     assert config.total_steps == 5
+    assert config.warmup_steps_override is None
+
+
+def test_training_config_defaults_to_no_warmup_override():
+    assert TrainingConfig().warmup_steps_override is None
+
+
+@pytest.mark.parametrize("value", ["-1", "-10"])
+def test_training_cli_rejects_negative_warmup(value):
+    with pytest.raises(ValueError, match="warmup_steps_override"):
+        train.parse_config(["--warmup-steps", value])
 
 
 def test_training_cli_parses_weights_only_checkpoint():

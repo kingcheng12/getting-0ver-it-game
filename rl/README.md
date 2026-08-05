@@ -88,10 +88,48 @@ sequence, while the character's blinking is cosmetic.
 
 - Action: `Box(-1, 1, shape=(2,), dtype=float32)`, normalized hammer direction
 - Observation: `Box(-1, 1, shape=(20,), dtype=float32)`
-- Unity goal/fall terminal steps map to `terminated=True`
+- Reaching waypoint 1 gives `+1` and activates waypoint 2 without ending the
+  episode
+- Reaching waypoint 2 gives an exact `+10` and is the only successful
+  terminal condition
+- Falling to `y <= -4.0` gives an exact `-1` terminal reward
+- Each unit of new maximum height gives `+0.25`; crossing `y=6.5` does not
+  provide a separate bonus or end the episode
+- Moving toward the active waypoint gives `0.5 ×` the distance reduction,
+  while moving away produces the corresponding negative shaping reward
+- Every Unity physics tick gives `-0.0001`
 - ML-Agents interrupted terminal steps and the Python 1,250-step limit map to
   `truncated=True`
 - `render()` returns `None`; the Unity Game view is the human renderer
+
+Checkpoints made before the waypoint-2-only reward change remain loadable,
+but their replay buffers contain obsolete height-goal transitions. Transfer
+the network weights with `--initialize-from` instead of fully resuming those
+checkpoints:
+
+```powershell
+uv run --project rl goi-train `
+  --initialize-from rl/checkpoints/latest `
+  --checkpoint-path rl/checkpoints/waypoint2-latest `
+  --total-steps 100000 `
+  --device cuda
+```
+
+Training normally uses 5,000 random-action warm-up steps. An explicit
+`--warmup-steps` value overrides that setting for new, initialized, or resumed
+training and is persisted in the output checkpoint. Omitting the option while
+resuming preserves the checkpoint's saved value. A checkpoint that already
+has enough online replay can start policy actions and updates immediately:
+
+```powershell
+uv run --project rl goi-train `
+  --resume-from rl/checkpoints/demo-latest `
+  --checkpoint-path rl/checkpoints/demo-latest `
+  --warmup-steps 0 `
+  --max-episode-steps 2500 `
+  --total-steps 100000 `
+  --device cuda
+```
 
 ## Human demonstration replay
 
@@ -136,12 +174,12 @@ fewer than 64 transitions.
 
 ### Resume training with demonstrations
 
-Resume the existing SAC state while writing assisted training to a new
-checkpoint:
+Initialize from existing network weights while writing assisted training to a
+new checkpoint:
 
 ```powershell
 uv run --project rl goi-train `
-  --resume-from rl/checkpoints/latest `
+  --initialize-from rl/checkpoints/latest `
   --demonstration rl/demonstrations/GOIHuman.demo `
   --demo-filter successful `
   --checkpoint-path rl/checkpoints/demo-latest `
@@ -161,6 +199,11 @@ buffer and its sampling state are preserved, so the original `.demo` files
 are not required for later resumes. Existing schema-1 checkpoints such as
 `rl/checkpoints/latest` are migrated automatically with an initially empty
 demonstration buffer.
+
+Demonstrations that ended at the old `y=6.5` height goal contain obsolete
+terminal rewards and should be re-recorded. Incomplete recordings that never
+reached that terminal can still be selected explicitly with
+`--demo-episode FILE INDEX`.
 
 Run the Python tests without starting Unity:
 

@@ -133,6 +133,27 @@ def test_training_loop_runs_real_sac_updates_end_to_end():
     assert math.isfinite(summary.last_update.critic_2_loss)
 
 
+def test_zero_warmup_uses_policy_and_updates_immediately():
+    algorithm = SACAlgorithm(
+        config=small_config(warmup_steps=0, batch_size=2), seed=2
+    )
+    zeros = np.zeros(20, np.float32)
+    algorithm.replay_buffer.add(
+        zeros, np.zeros(2, np.float32), 0.0, zeros, False, False
+    )
+    policy_calls = []
+    algorithm.predict = lambda observation, deterministic=True: (
+        policy_calls.append(deterministic)
+        or np.array([0.5, -0.5], np.float32)
+    )
+    algorithm.updater.update = lambda batch: update_metrics()
+
+    summary = algorithm.learn(ScriptedEnvironment(), total_steps=1)
+
+    assert policy_calls == [False]
+    assert summary.gradient_updates == 1
+
+
 def test_learn_preserves_terminal_observations_and_resets_both_endings():
     endings = {
         2: (True, False, -1.0),
@@ -176,7 +197,7 @@ def test_learn_preserves_terminal_observations_and_resets_both_endings():
     assert [item.episode_length for item in summary.episode_metrics] == [2, 2]
 
 
-def test_positive_terminal_reward_is_tracked_as_success():
+def test_exact_waypoint_terminal_reward_is_tracked_as_success():
     environment = ScriptedEnvironment(
         endings={1: (True, False, 10.0)}
     )
@@ -188,6 +209,19 @@ def test_positive_terminal_reward_is_tracked_as_success():
 
     assert summary.episode_metrics[0].outcome == "success"
     assert summary.episode_metrics[0].maximum_height == pytest.approx(0.05)
+
+
+def test_other_positive_terminal_reward_is_not_waypoint_success():
+    environment = ScriptedEnvironment(
+        endings={1: (True, False, 2.0)}
+    )
+    algorithm = SACAlgorithm(
+        config=small_config(warmup_steps=10)
+    )
+
+    summary = algorithm.learn(environment, total_steps=1)
+
+    assert summary.episode_metrics[0].outcome == "fall"
 
 
 def test_periodic_checkpoints_follow_global_step_when_resuming(tmp_path):
@@ -264,7 +298,36 @@ def test_run_training_loads_resume_checkpoint_and_saves_output(
     train.run_training(config, algorithm_factory=factory)
 
     assert calls == [((resume_from,), {"device": "cpu"})]
-    assert SACAlgorithm.load(output).environment_steps == 5
+    restored = SACAlgorithm.load(output)
+    assert restored.environment_steps == 5
+    assert restored.config.warmup_steps == 10
+    assert environment.closed
+
+
+def test_run_training_overrides_and_persists_resumed_warmup(
+    tmp_path, monkeypatch
+):
+    resume_from = tmp_path / "old"
+    output = tmp_path / "new"
+    source = SACAlgorithm(config=small_config(warmup_steps=10), seed=9)
+    source.save(resume_from)
+    environment = ScriptedEnvironment()
+    monkeypatch.setattr(
+        train.gym, "make", lambda *args, **kwargs: environment
+    )
+    config = TrainingConfig(
+        total_steps=1,
+        sac=small_config(),
+        checkpoint_path=output,
+        resume_from=resume_from,
+        warmup_steps_override=0,
+    )
+
+    train.run_training(config)
+
+    restored = SACAlgorithm.load(output)
+    assert restored.config.warmup_steps == 0
+    assert restored.environment_steps == 1
     assert environment.closed
 
 

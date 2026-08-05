@@ -141,6 +141,7 @@ class TrainingConfig:
     demonstrations: Tuple[Path, ...] = ()
     demonstration_episodes: Tuple[Tuple[Path, int], ...] = ()
     demonstration_filter: str = "successful"
+    warmup_steps_override: Optional[int] = None
 
     def __post_init__(self) -> None:
         if self.total_steps <= 0:
@@ -151,6 +152,16 @@ class TrainingConfig:
             )
         if self.demonstration_filter not in {"successful", "non-fall", "all"}:
             raise ValueError("demonstration_filter is invalid")
+        if self.warmup_steps_override is not None:
+            if (
+                isinstance(self.warmup_steps_override, bool)
+                or not isinstance(self.warmup_steps_override, int)
+            ):
+                raise TypeError("warmup_steps_override must be an integer")
+            if self.warmup_steps_override < 0:
+                raise ValueError(
+                    "warmup_steps_override must be non-negative"
+                )
 
 
 @dataclass(frozen=True)

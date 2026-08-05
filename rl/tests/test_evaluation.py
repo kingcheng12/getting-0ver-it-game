@@ -132,6 +132,26 @@ def test_evaluation_reports_episode_and_aggregate_metrics(
     assert "evaluation_summary episodes=3" in output
 
 
+def test_evaluation_only_counts_exact_waypoint_reward_as_success(
+    tmp_path, monkeypatch
+):
+    environment = EvaluationEnvironment(
+        [[(2.0, True, False, 0.5)]]
+    )
+    monkeypatch.setattr(
+        evaluate.gym, "make", lambda *args, **kwargs: environment
+    )
+    checkpoint = tmp_path / "agent"
+    SACAlgorithm(config=small_config()).save(checkpoint)
+
+    summary = evaluate.run_evaluation(
+        EvaluationConfig(episodes=1, checkpoint_path=checkpoint)
+    )
+
+    assert summary.success_rate == 0.0
+    assert summary.fall_rate == 1.0
+
+
 def test_evaluation_does_not_modify_training_state(tmp_path, monkeypatch):
     algorithm = SACAlgorithm(config=small_config(), seed=3)
     observation = np.zeros(20, np.float32)

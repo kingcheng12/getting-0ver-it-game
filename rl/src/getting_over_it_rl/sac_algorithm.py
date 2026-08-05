@@ -13,8 +13,9 @@ import torch
 
 from .algorithm import RLAlgorithm
 from .config import SACConfig
+from .demonstrations import DemonstrationBuffer
 from .networks import create_sac_networks
-from .replay_buffer import ReplayBuffer
+from .replay_buffer import ReplayBatch, ReplayBuffer
 from .sac_update import SACUpdateMetrics, SACUpdater
 
 
@@ -44,7 +45,7 @@ class TrainingSummary:
 class SACAlgorithm(RLAlgorithm):
     """Concrete SAC state, inference, and checkpoint boundary."""
 
-    CHECKPOINT_VERSION = 1
+    CHECKPOINT_VERSION = 2
     DEFAULT_OBSERVATION_DIMENSION = 20
     DEFAULT_ACTION_DIMENSION = 2
     PROGRESS_INTERVAL = 1_000
@@ -89,6 +90,7 @@ class SACAlgorithm(RLAlgorithm):
             action_shape=(self.action_dimension,),
             seed=self.seed,
         )
+        self.demonstration_buffer = DemonstrationBuffer(seed=self.seed)
         self.rng = np.random.default_rng(self.seed)
         self.environment_steps = 0
         self.gradient_updates = 0
@@ -96,6 +98,33 @@ class SACAlgorithm(RLAlgorithm):
 
     def ensure_training_ready(self) -> None:
         return None
+
+    def set_demonstrations(self, buffer: DemonstrationBuffer) -> None:
+        if not isinstance(buffer, DemonstrationBuffer):
+            raise TypeError("buffer must be a DemonstrationBuffer")
+        required = self.configured_demonstration_batch_size
+        if 0 < len(buffer) < required:
+            raise ValueError(
+                f"Demonstration buffer needs at least {required} transitions"
+            )
+        self.demonstration_buffer = buffer
+
+    @property
+    def demonstration_batch_size(self) -> int:
+        if len(self.demonstration_buffer) == 0:
+            return 0
+        return self.configured_demonstration_batch_size
+
+    @property
+    def configured_demonstration_batch_size(self) -> int:
+        fraction = self.config.demonstration_batch_fraction
+        if fraction == 0.0:
+            return 0
+        return max(1, int(round(self.config.batch_size * fraction)))
+
+    @property
+    def online_batch_size(self) -> int:
+        return self.config.batch_size - self.demonstration_batch_size
 
     def learn(
         self,
@@ -121,7 +150,10 @@ class SACAlgorithm(RLAlgorithm):
         print(
             f"training_started step={self.environment_steps} "
             f"additional_steps={total_steps} device={self.device} "
-            f"warmup_steps={self.config.warmup_steps}",
+            f"warmup_steps={self.config.warmup_steps} "
+            f"demo_size={len(self.demonstration_buffer)} "
+            f"batch_mix={self.demonstration_batch_size}/"
+            f"{self.online_batch_size}",
             flush=True,
         )
 
@@ -169,12 +201,10 @@ class SACAlgorithm(RLAlgorithm):
 
             if (
                 self.environment_steps >= self.config.warmup_steps
-                and len(self.replay_buffer) >= self.config.batch_size
+                and len(self.replay_buffer) >= self.online_batch_size
             ):
                 for _ in range(self.config.updates_per_step):
-                    batch = self.replay_buffer.sample(
-                        self.config.batch_size, device=self.device
-                    )
+                    batch = self._sample_training_batch()
                     last_update = self.updater.update(batch)
                     self.gradient_updates += 1
 
@@ -231,6 +261,24 @@ class SACAlgorithm(RLAlgorithm):
             episode_metrics=tuple(completed_episodes),
             last_update=last_update,
         )
+
+    def _sample_training_batch(self) -> ReplayBatch:
+        demo_count = self.demonstration_batch_size
+        if demo_count == 0:
+            return self.replay_buffer.sample(
+                self.config.batch_size, self.device
+            )
+        online = self.replay_buffer.sample(self.online_batch_size, self.device)
+        demonstration = self.demonstration_buffer.sample(demo_count, self.device)
+        permutation = torch.randperm(self.config.batch_size, device=self.device)
+        values = {}
+        for field in fields(ReplayBatch):
+            combined = torch.cat(
+                (getattr(demonstration, field.name), getattr(online, field.name)),
+                dim=0,
+            )
+            values[field.name] = combined[permutation]
+        return ReplayBatch(**values)
 
     def predict(
         self,
@@ -322,13 +370,14 @@ class SACAlgorithm(RLAlgorithm):
                 f"Unable to read SAC checkpoint: {checkpoint_path}"
             ) from error
         cls._validate_checkpoint_keys(state)
-        if state["version"] != cls.CHECKPOINT_VERSION:
+        version = state["version"]
+        if version not in {1, cls.CHECKPOINT_VERSION}:
             raise ValueError(
                 "Unsupported SAC checkpoint version: "
                 f"{state['version']}"
             )
 
-        config = cls._restore_config(state["config"], device)
+        config = cls._restore_config(state["config"], device, version)
         observation_dimension = cls._positive_dimension(
             state["observation_dimension"], "observation_dimension"
         )
@@ -351,6 +400,12 @@ class SACAlgorithm(RLAlgorithm):
             algorithm.replay_buffer.load_state_dict(
                 state["replay_buffer"]
             )
+            if version == cls.CHECKPOINT_VERSION:
+                algorithm.set_demonstrations(
+                    DemonstrationBuffer.from_state_dict(
+                        state["demonstration_buffer"]
+                    )
+                )
         except (KeyError, TypeError, ValueError, RuntimeError) as error:
             raise ValueError("SAC checkpoint state is incompatible") from error
 
@@ -421,6 +476,7 @@ class SACAlgorithm(RLAlgorithm):
             "networks": self.networks.state_dict(),
             "updater": self.updater.state_dict(),
             "replay_buffer": self.replay_buffer.state_dict(),
+            "demonstration_buffer": self.demonstration_buffer.state_dict(),
             "environment_steps": self._counter(
                 self.environment_steps, "environment_steps"
             ),
@@ -459,6 +515,9 @@ class SACAlgorithm(RLAlgorithm):
             "torch_rng_state",
             "cuda_rng_states",
         }
+        version = state.get("version")
+        if version == cls.CHECKPOINT_VERSION:
+            expected_keys.add("demonstration_buffer")
         if set(state) != expected_keys:
             missing = sorted(expected_keys - set(state))
             extra = sorted(set(state) - expected_keys)
@@ -469,10 +528,13 @@ class SACAlgorithm(RLAlgorithm):
 
     @staticmethod
     def _restore_config(
-        state: Any, device: Optional[str]
+        state: Any, device: Optional[str], version: int
     ) -> SACConfig:
         if not isinstance(state, dict):
             raise ValueError("Checkpoint config must be a dictionary")
+        state = dict(state)
+        if version == 1:
+            state.setdefault("demonstration_batch_fraction", 0.25)
         expected_fields = {field.name for field in fields(SACConfig)}
         if set(state) != expected_fields:
             raise ValueError("Checkpoint SACConfig fields are incompatible")
@@ -646,6 +708,9 @@ class SACAlgorithm(RLAlgorithm):
         print(
             f"training_progress step={self.environment_steps} "
             f"updates={self.gradient_updates} "
-            f"replay_size={len(self.replay_buffer)} {update_text}",
+            f"replay_size={len(self.replay_buffer)} "
+            f"demo_size={len(self.demonstration_buffer)} "
+            f"batch_mix={self.demonstration_batch_size}/"
+            f"{self.online_batch_size} {update_text}",
             flush=True,
         )

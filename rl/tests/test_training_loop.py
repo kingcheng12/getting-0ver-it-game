@@ -306,6 +306,47 @@ def test_run_training_initializes_weights_without_old_training_state(
     assert environment.closed
 
 
+def test_demonstration_cli_options_are_parsed():
+    config = train.parse_config(
+        [
+            "--demonstration",
+            "whole.demo",
+            "--demo-episode",
+            "chosen.demo",
+            "3",
+            "--demo-filter",
+            "non-fall",
+        ]
+    )
+
+    assert config.demonstrations == (Path("whole.demo"),)
+    assert config.demonstration_episodes == ((Path("chosen.demo"), 3),)
+    assert config.demonstration_filter == "non-fall"
+
+
+def test_invalid_demonstration_fails_before_unity_opens(tmp_path, monkeypatch):
+    invalid = tmp_path / "invalid.demo"
+    invalid.write_bytes(b"invalid")
+    unity_opened = False
+
+    def open_unity(*args, **kwargs):
+        nonlocal unity_opened
+        unity_opened = True
+        raise AssertionError("Unity should not open")
+
+    monkeypatch.setattr(train.gym, "make", open_unity)
+    config = TrainingConfig(
+        total_steps=1,
+        sac=small_config(),
+        checkpoint_path=tmp_path / "checkpoint",
+        demonstrations=(invalid,),
+    )
+
+    with pytest.raises(ValueError, match="Invalid Release 17"):
+        train.run_training(config)
+    assert not unity_opened
+
+
 @pytest.mark.parametrize("total_steps", [0, -1, 1.5, True])
 def test_learn_rejects_invalid_step_counts(total_steps):
     algorithm = SACAlgorithm(config=small_config())

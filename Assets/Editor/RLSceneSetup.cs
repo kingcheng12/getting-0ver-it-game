@@ -1,5 +1,6 @@
 using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
+using Unity.MLAgents.Demonstrations;
 using Unity.MLAgents.Policies;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -11,6 +12,8 @@ public static class RLSceneSetup {
     const string WaypointRootName = "RL Waypoints";
     const string FirstWaypointName = "Waypoint 1 - First Pillar Exit";
     const string SecondWaypointName = "Waypoint 2 - Second Pillar";
+    const string DemonstrationName = "GOIHuman";
+    const string DemonstrationDirectory = "rl/demonstrations";
 
     [MenuItem("RL/Configure Main Scene")]
     public static void ConfigureMainScene() {
@@ -36,6 +39,8 @@ public static class RLSceneSetup {
             GetOrAddComponent<GettingOverItAgent>(playerObject);
         DecisionRequester requester =
             GetOrAddComponent<DecisionRequester>(playerObject);
+        DemonstrationRecorder recorder =
+            GetOrAddComponent<DemonstrationRecorder>(playerObject);
 
         Rigidbody2D body = playerControl.body.GetComponent<Rigidbody2D>();
         Rigidbody2D hammer =
@@ -64,10 +69,16 @@ public static class RLSceneSetup {
         requester.DecisionPeriod = 4;
         requester.TakeActionsBetweenDecisions = true;
 
+        recorder.Record = false;
+        recorder.NumStepsToRecord = 0;
+        recorder.DemonstrationName = DemonstrationName;
+        recorder.DemonstrationDirectory = DemonstrationDirectory;
+
         EditorUtility.SetDirty(playerControl);
         EditorUtility.SetDirty(agent);
         EditorUtility.SetDirty(behavior);
         EditorUtility.SetDirty(requester);
+        EditorUtility.SetDirty(recorder);
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene);
 
@@ -75,7 +86,8 @@ public static class RLSceneSetup {
             "Configured MainScene for Gymnasium communication: " +
             "20 observations, 2 continuous actions, decision period 4, " +
             "and two waypoint markers. Drag the waypoint markers to the " +
-            "desired body locations in the Scene view before training.");
+            "desired body locations in the Scene view before training. " +
+            "The demonstration recorder is configured but disabled.");
     }
 
     [MenuItem("RL/Configure Main Scene", true)]
@@ -94,6 +106,7 @@ public static class RLSceneSetup {
                      playerObject.GetComponent<GettingOverItAgent>() != null &&
                      playerObject.GetComponent<BehaviorParameters>() != null &&
                      playerObject.GetComponent<DecisionRequester>() != null &&
+                     playerObject.GetComponent<DemonstrationRecorder>() != null &&
                      FindWaypoints().Length == 2;
 
         if (!valid) {
@@ -125,9 +138,77 @@ public static class RLSceneSetup {
         Debug.Log("MainScene RL setup is valid: " + scene.path);
     }
 
+    [MenuItem("RL/Demonstrations/Enable Recording")]
+    public static void EnableDemonstrationRecording() {
+        Scene scene = EditorSceneManager.OpenScene(
+            MainScenePath, OpenSceneMode.Single);
+        GameObject playerObject = RequirePlayer();
+        BehaviorParameters behavior =
+            playerObject.GetComponent<BehaviorParameters>();
+        DemonstrationRecorder recorder =
+            playerObject.GetComponent<DemonstrationRecorder>();
+        if (behavior == null || recorder == null) {
+            throw new MissingComponentException(
+                "Run RL > Configure Main Scene before recording.");
+        }
+
+        behavior.BehaviorType = BehaviorType.HeuristicOnly;
+        recorder.DemonstrationName = DemonstrationName;
+        recorder.DemonstrationDirectory = DemonstrationDirectory;
+        recorder.NumStepsToRecord = 0;
+        recorder.Record = true;
+        EditorUtility.SetDirty(behavior);
+        EditorUtility.SetDirty(recorder);
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        Debug.Log(
+            "Human demonstration recording enabled. Press Play and use " +
+            "the mouse. Disable recording before reconnecting Python.");
+    }
+
+    [MenuItem("RL/Demonstrations/Disable Recording")]
+    public static void DisableDemonstrationRecording() {
+        Scene scene = EditorSceneManager.OpenScene(
+            MainScenePath, OpenSceneMode.Single);
+        GameObject playerObject = RequirePlayer();
+        BehaviorParameters behavior =
+            playerObject.GetComponent<BehaviorParameters>();
+        DemonstrationRecorder recorder =
+            playerObject.GetComponent<DemonstrationRecorder>();
+        if (behavior == null || recorder == null) {
+            throw new MissingComponentException(
+                "Run RL > Configure Main Scene before recording.");
+        }
+
+        recorder.Record = false;
+        recorder.Close();
+        behavior.BehaviorType = BehaviorType.Default;
+        EditorUtility.SetDirty(behavior);
+        EditorUtility.SetDirty(recorder);
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        Debug.Log(
+            "Human demonstration recording disabled. Python can connect.");
+    }
+
     [MenuItem("RL/Validate Main Scene", true)]
     static bool CanValidateMainScene() {
         return !EditorApplication.isPlayingOrWillChangePlaymode;
+    }
+
+    [MenuItem("RL/Demonstrations/Enable Recording", true)]
+    [MenuItem("RL/Demonstrations/Disable Recording", true)]
+    static bool CanChangeDemonstrationRecording() {
+        return !EditorApplication.isPlayingOrWillChangePlaymode;
+    }
+
+    static GameObject RequirePlayer() {
+        GameObject playerObject = GameObject.Find("Player");
+        if (playerObject == null) {
+            throw new MissingReferenceException(
+                "MainScene must contain a GameObject named Player.");
+        }
+        return playerObject;
     }
 
     static T GetOrAddComponent<T>(GameObject gameObject)

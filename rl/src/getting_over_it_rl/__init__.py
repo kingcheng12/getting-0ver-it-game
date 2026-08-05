@@ -7,6 +7,15 @@ from .config import (
     resolve_torch_device,
 )
 from .replay_buffer import ReplayBatch, ReplayBuffer
+from .demonstrations import (
+    DemonstrationBuffer,
+    DemonstrationEpisode,
+    DemonstrationEpisodeSummary,
+    DemonstrationFile,
+    DemonstrationSource,
+    load_demonstration_file,
+    select_demonstrations,
+)
 from .networks import (
     GaussianActor,
     QCritic,
@@ -22,6 +31,11 @@ from .evaluation_metrics import (
 
 __all__ = [
     "EnvironmentConfig",
+    "DemonstrationBuffer",
+    "DemonstrationEpisode",
+    "DemonstrationEpisodeSummary",
+    "DemonstrationFile",
+    "DemonstrationSource",
     "EpisodeMetrics",
     "EvaluationConfig",
     "EvaluationEpisodeMetrics",
@@ -40,5 +54,7 @@ __all__ = [
     "TrainingSummary",
     "create_algorithm",
     "create_sac_networks",
+    "load_demonstration_file",
     "resolve_torch_device",
+    "select_demonstrations",
 ]

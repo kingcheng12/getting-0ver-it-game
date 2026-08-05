@@ -18,6 +18,7 @@
 /[.]pytest_cache/
 /rl/**/__pycache__/
 /rl/checkpoints/
+/rl/demonstrations/
 
 # MemoryCaptures can get excessive in size.
 # They also could contain extremely sensitive data

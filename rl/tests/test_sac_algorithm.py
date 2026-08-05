@@ -6,6 +6,9 @@ import pytest
 import torch
 
 from getting_over_it_rl import (
+    DemonstrationBuffer,
+    DemonstrationEpisode,
+    DemonstrationSource,
     ReplayBatch,
     SACAlgorithm,
     SACConfig,
@@ -38,6 +41,26 @@ def make_batch(batch_size=4):
         truncated=truncated,
         bootstrap_mask=torch.ones(batch_size, 1),
         episode_end=terminated | truncated,
+    )
+
+
+def make_demo_buffer(size=4, reward=99.0, seed=3):
+    observations = np.zeros((size, 20), np.float32)
+    return DemonstrationBuffer(
+        (
+            DemonstrationEpisode(
+                source=DemonstrationSource("synthetic.demo", "a" * 64),
+                index=0,
+                observations=observations,
+                actions=np.zeros((size, 2), np.float32),
+                rewards=np.full((size, 1), reward, np.float32),
+                next_observations=observations.copy(),
+                terminated=np.zeros((size, 1), np.bool_),
+                truncated=np.zeros((size, 1), np.bool_),
+                outcome="incomplete",
+            ),
+        ),
+        seed=seed,
     )
 
 
@@ -123,6 +146,7 @@ def test_predict_rejects_invalid_observations(
 def test_checkpoint_round_trip_preserves_complete_training_state(tmp_path):
     algorithm = SACAlgorithm(config=small_config(), seed=11)
     populate_algorithm(algorithm)
+    algorithm.set_demonstrations(make_demo_buffer())
     checkpoint = tmp_path / "latest"
     expected_prediction = algorithm.predict(
         np.linspace(-1.0, 1.0, 20, dtype=np.float32)
@@ -156,6 +180,11 @@ def test_checkpoint_round_trip_preserves_complete_training_state(tmp_path):
     assert restored.updater.entropy_optimizer is not None
     assert restored.updater.entropy_optimizer.state_dict()["state"]
     assert len(restored.replay_buffer) == len(algorithm.replay_buffer)
+    assert len(restored.demonstration_buffer) == 4
+    assert (
+        restored.demonstration_buffer.episodes
+        == algorithm.demonstration_buffer.episodes
+    )
     assert restored.environment_steps == 17
     assert restored.gradient_updates == 3
     assert restored.episodes_completed == 2
@@ -167,6 +196,42 @@ def test_checkpoint_round_trip_preserves_complete_training_state(tmp_path):
         algorithm.rng.integers(0, 10_000, size=5),
         restored.rng.integers(0, 10_000, size=5),
     )
+
+
+def test_mixed_batch_has_exact_default_25_75_composition():
+    config = small_config(
+        replay_capacity=300,
+        batch_size=256,
+        demonstration_batch_fraction=0.25,
+    )
+    algorithm = SACAlgorithm(config=config)
+    algorithm.set_demonstrations(make_demo_buffer(size=64))
+    for _ in range(192):
+        zeros = np.zeros(20, np.float32)
+        algorithm.replay_buffer.add(
+            zeros, np.zeros(2, np.float32), 0.0, zeros, False, False
+        )
+
+    batch = algorithm._sample_training_batch()
+
+    assert batch.rewards.shape == (256, 1)
+    assert torch.count_nonzero(batch.rewards == 99.0).item() == 64
+    assert torch.count_nonzero(batch.rewards == 0.0).item() == 192
+
+
+def test_schema_one_checkpoint_migrates_with_empty_demonstrations(tmp_path):
+    algorithm = SACAlgorithm(config=small_config())
+    state = algorithm._checkpoint_state()
+    state["version"] = 1
+    state.pop("demonstration_buffer")
+    state["config"].pop("demonstration_batch_fraction")
+    checkpoint = tmp_path / "v1"
+    torch.save(state, checkpoint)
+
+    restored = SACAlgorithm.load(checkpoint)
+
+    assert len(restored.demonstration_buffer) == 0
+    assert restored.config.demonstration_batch_fraction == pytest.approx(0.25)
 
 
 def test_checkpoint_save_replaces_existing_file_atomically(tmp_path):

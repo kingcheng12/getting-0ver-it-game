@@ -1,5 +1,6 @@
 using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
+using Unity.MLAgents.Demonstrations;
 using Unity.MLAgents.Sensors;
 using UnityEngine;
 
@@ -14,6 +15,7 @@ public class GettingOverItAgent : Agent {
     [SerializeField] Rigidbody2D body;
     [SerializeField] Rigidbody2D hammer;
     [SerializeField] Camera followCamera;
+    [SerializeField] DemonstrationRecorder demonstrationRecorder;
 
     [Header("Observation normalization")]
     [SerializeField] float positionScale = 10.0f;
@@ -60,6 +62,13 @@ public class GettingOverItAgent : Agent {
         }
     }
 
+    bool RecordingActive {
+        get {
+            return demonstrationRecorder != null &&
+                   demonstrationRecorder.Record;
+        }
+    }
+
     public void Configure(
         PlayerControl control,
         Rigidbody2D bodyRigidbody,
@@ -100,6 +109,11 @@ public class GettingOverItAgent : Agent {
 
         if (followCamera == null) {
             followCamera = Camera.main;
+        }
+
+        if (demonstrationRecorder == null) {
+            demonstrationRecorder =
+                GetComponent<DemonstrationRecorder>();
         }
 
         if (playerControl == null || body == null || hammer == null) {
@@ -153,9 +167,16 @@ public class GettingOverItAgent : Agent {
 
     void FixedUpdate() {
         bool communicatorActive = CommunicatorActive;
+        bool recordingActive = RecordingActive;
+        if (communicatorActive && recordingActive) {
+            throw new System.InvalidOperationException(
+                "Human demonstration recording cannot run while the " +
+                "Python communicator is connected. Disable recording " +
+                "through RL > Demonstrations > Disable Recording.");
+        }
         playerControl.SetExternalControlEnabled(communicatorActive);
 
-        if (!communicatorActive) {
+        if (!communicatorActive && !recordingActive) {
             return;
         }
 
@@ -321,7 +342,8 @@ public class GettingOverItAgent : Agent {
     }
 
     public override void OnActionReceived(ActionBuffers actions) {
-        if (!CommunicatorActive) {
+        bool communicatorActive = CommunicatorActive;
+        if (!communicatorActive && !RecordingActive) {
             return;
         }
 
@@ -331,7 +353,9 @@ public class GettingOverItAgent : Agent {
         action = Vector2.ClampMagnitude(action, 1.0f);
 
         previousAction = action;
-        playerControl.SetExternalCommand(action);
+        if (communicatorActive) {
+            playerControl.SetExternalCommand(action);
+        }
     }
 
     public override void Heuristic(in ActionBuffers actionsOut) {

@@ -164,8 +164,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9f1372c75f6542c590dd40a52a28b205, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
   radius: 0.75
 --- !u!1 &40855580
 GameObject:
@@ -2501,6 +2501,7 @@ GameObject:
   - component: {fileID: 290370117}
   - component: {fileID: 290370116}
   - component: {fileID: 290370115}
+  - component: {fileID: 290370118}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -2573,6 +2574,7 @@ MonoBehaviour:
   body: {fileID: 1051555077}
   hammer: {fileID: 720087031}
   followCamera: {fileID: 519420031}
+  demonstrationRecorder: {fileID: 290370118}
   positionScale: 10
   bodyVelocityScale: 6
   hammerVelocityScale: 10
@@ -2624,6 +2626,22 @@ MonoBehaviour:
   m_UseChildSensors: 1
   m_UseChildActuators: 1
   m_ObservableAttributeHandling: 0
+--- !u!114 &290370118
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 290370112}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2902496c0120472b90269f94a0aec7e, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  Record: 0
+  NumStepsToRecord: 0
+  DemonstrationName: GOIHuman
+  DemonstrationDirectory: rl/demonstrations
 --- !u!1 &311916033
 GameObject:
   m_ObjectHideFlags: 0

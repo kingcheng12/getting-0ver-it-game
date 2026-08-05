@@ -19,6 +19,7 @@ dependencies = [
 [project.scripts]
 goi-train = "getting_over_it_rl.train:main"
 goi-evaluate = "getting_over_it_rl.evaluate:main"
+goi-demo-inspect = "getting_over_it_rl.demo_inspect:main"
 
 [dependency-groups]
 dev = [

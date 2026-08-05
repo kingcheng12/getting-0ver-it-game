@@ -46,6 +46,7 @@ class SACConfig:
     hidden_sizes: Tuple[int, ...] = (256, 256)
     replay_capacity: int = 200_000
     batch_size: int = 256
+    demonstration_batch_fraction: float = 0.25
     warmup_steps: int = 5_000
     updates_per_step: int = 1
     gamma: float = 0.99
@@ -74,6 +75,11 @@ class SACConfig:
             raise ValueError(
                 "batch_size cannot exceed replay_capacity"
             )
+        if (
+            not math.isfinite(self.demonstration_batch_fraction)
+            or not 0.0 <= self.demonstration_batch_fraction < 1.0
+        ):
+            raise ValueError("demonstration_batch_fraction must be in [0, 1)")
         if self.warmup_steps < 0:
             raise ValueError("warmup_steps must be non-negative")
         if self.updates_per_step <= 0:
@@ -132,6 +138,9 @@ class TrainingConfig:
     )
     resume_from: Optional[Path] = None
     initialize_from: Optional[Path] = None
+    demonstrations: Tuple[Path, ...] = ()
+    demonstration_episodes: Tuple[Tuple[Path, int], ...] = ()
+    demonstration_filter: str = "successful"
 
     def __post_init__(self) -> None:
         if self.total_steps <= 0:
@@ -140,6 +149,8 @@ class TrainingConfig:
             raise ValueError(
                 "resume_from and initialize_from are mutually exclusive"
             )
+        if self.demonstration_filter not in {"successful", "non-fall", "all"}:
+            raise ValueError("demonstration_filter is invalid")
 
 
 @dataclass(frozen=True)

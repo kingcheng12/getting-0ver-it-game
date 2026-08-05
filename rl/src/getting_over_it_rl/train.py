@@ -10,6 +10,8 @@ from getting_over_it_env import ENVIRONMENT_ID
 
 from .algorithm import RLAlgorithm, create_algorithm
 from .config import EnvironmentConfig, SACConfig, TrainingConfig
+from .demonstrations import select_demonstrations
+from .sac_algorithm import SACAlgorithm
 
 AlgorithmFactory = Callable[..., RLAlgorithm]
 
@@ -32,6 +34,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--resume-from", type=Path, default=None)
     parser.add_argument(
+        "--demonstration", type=Path, action="append", default=[]
+    )
+    parser.add_argument(
+        "--demo-episode", nargs=2, action="append", default=[],
+        metavar=("FILE", "INDEX"),
+    )
+    parser.add_argument(
+        "--demo-filter",
+        choices=("successful", "non-fall", "all"),
+        default="successful",
+    )
+    parser.add_argument(
         "--initialize-from",
         type=Path,
         default=None,
@@ -46,6 +60,15 @@ def build_parser() -> argparse.ArgumentParser:
 def parse_config(argv: Optional[Sequence[str]] = None) -> TrainingConfig:
     args = build_parser().parse_args(argv)
     defaults = TrainingConfig()
+    episode_selections = []
+    for path, index_text in args.demo_episode:
+        try:
+            index = int(index_text)
+        except ValueError as error:
+            raise ValueError(
+                "--demo-episode INDEX must be an integer"
+            ) from error
+        episode_selections.append((Path(path), index))
     return TrainingConfig(
         environment=EnvironmentConfig(
             file_name=args.file_name,
@@ -63,6 +86,9 @@ def parse_config(argv: Optional[Sequence[str]] = None) -> TrainingConfig:
         ),
         resume_from=args.resume_from,
         initialize_from=args.initialize_from,
+        demonstrations=tuple(args.demonstration),
+        demonstration_episodes=tuple(episode_selections),
+        demonstration_filter=args.demo_filter,
     )
 
 
@@ -89,6 +115,26 @@ def run_training(
             config.resume_from, device=config.sac.device
         )
     algorithm.ensure_training_ready()
+    explicit_demonstrations = bool(
+        config.demonstrations or config.demonstration_episodes
+    )
+    if explicit_demonstrations:
+        if not isinstance(algorithm, SACAlgorithm):
+            raise TypeError("Demonstration replay requires SACAlgorithm")
+        required = algorithm.configured_demonstration_batch_size
+        buffer = select_demonstrations(
+            config.demonstrations,
+            config.demonstration_episodes,
+            config.demonstration_filter,
+            seed=config.seed,
+            minimum_transitions=max(64, required),
+        )
+        algorithm.set_demonstrations(buffer)
+        print(
+            f"Loaded {len(buffer)} immutable demonstration transitions "
+            f"from {len(buffer.episodes)} episodes.",
+            flush=True,
+        )
     print("SAC initialized; opening the Unity connection.", flush=True)
 
     environment: Optional[gym.Env] = None
